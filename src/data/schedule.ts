@@ -19,7 +19,7 @@ const toMinutes = (hhmm: string) => {
   return h * 60 + m;
 };
 
-const formatDuration = (min: number) => {
+export const formatDuration = (min: number) => {
   const h = Math.floor(min / 60);
   const m = min % 60;
   if (h === 0) return `${m} min`;
