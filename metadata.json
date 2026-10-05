@@ -1,0 +1,6 @@
+{
+  "name": "Muni Limpia",
+  "description": "Aplicación municipal de recolección de residuos, mapas interactivos de zonas y puntos verdes, horarios y reportes ciudadanos para la Ciudad de Corrientes.",
+  "requestFramePermissions": ["geolocation", "camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
