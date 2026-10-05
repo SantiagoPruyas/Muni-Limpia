@@ -80,6 +80,15 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({
   const successTitleRef = useRef<HTMLHeadingElement>(null);
   const codeRef = useRef<HTMLSpanElement>(null);
   const photoSeq = useRef(0);
+  // Al cargar o quitar la foto, el botón usado desaparece: el foco pasa al que lo reemplaza.
+  const photoButtonRef = useRef<HTMLButtonElement>(null);
+  const focusPhotoButton = useRef(false);
+
+  useEffect(() => {
+    if (!focusPhotoButton.current) return;
+    focusPhotoButton.current = false;
+    photoButtonRef.current?.focus();
+  }, [photoPreview]);
 
   // La pantalla de éxito toma el foco para que el lector la anuncie.
   useEffect(() => {
@@ -110,7 +119,9 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({
     categoryRefs.current[next]?.focus();
   };
 
+  // Los botones ocupados usan aria-disabled y no `disabled`, que le saca el foco al botón.
   const detectLocation = () => {
+    if (isLocating) return;
     setIsLocating(true);
     setLocationDetected(false);
     setTimeout(() => {
@@ -127,13 +138,18 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({
     e.target.value = '';
     if (!file) return;
     const reader = new FileReader();
-    reader.onloadend = () => setPhotoPreview(reader.result as string);
+    reader.onloadend = () => {
+      focusPhotoButton.current = true;
+      setPhotoPreview(reader.result as string);
+    };
     reader.readAsDataURL(file);
   };
 
   const takePhoto = () => {
+    if (isCapturing) return;
     setIsCapturing(true);
     setTimeout(() => {
+      focusPhotoButton.current = true;
       setPhotoPreview(DEMO_PHOTOS[photoSeq.current++ % DEMO_PHOTOS.length]);
       setIsCapturing(false);
     }, 700);
@@ -141,6 +157,7 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
     const nextErrors = {
       title: title.trim() ? undefined : 'Escribí un título para tu reclamo.',
       address: address.trim() ? undefined : 'Indicá la dirección o una referencia.',
@@ -400,8 +417,8 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({
               <button
                 type="button"
                 onClick={detectLocation}
-                disabled={isLocating}
-                className="h-11 px-4 inline-flex items-center gap-2 rounded-control bg-surface-muted hover:bg-brand-soft text-brand-600 text-sm font-semibold transition-colors disabled:opacity-70"
+                aria-disabled={isLocating}
+                className="h-11 px-4 inline-flex items-center gap-2 rounded-control bg-surface-muted hover:bg-brand-soft text-brand-600 text-sm font-semibold transition-colors aria-disabled:opacity-70"
               >
                 {isLocating ? (
                   <Loader2 className="w-4 h-4 animate-spin" aria-hidden />
@@ -494,8 +511,12 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({
               <div className="relative rounded-control overflow-hidden border border-line aspect-video bg-ink">
                 <img src={photoPreview} alt="Foto adjunta al reclamo" className="w-full h-full object-cover" />
                 <button
+                  ref={photoButtonRef}
                   type="button"
-                  onClick={() => setPhotoPreview(null)}
+                  onClick={() => {
+                    focusPhotoButton.current = true;
+                    setPhotoPreview(null);
+                  }}
                   aria-label="Quitar foto"
                   className="absolute top-2 right-2 w-11 h-11 rounded-full bg-ink/75 hover:bg-ink text-white flex items-center justify-center transition-colors"
                 >
@@ -505,9 +526,10 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({
             ) : (
               <div className="grid grid-cols-2 gap-2">
                 <button
+                  ref={photoButtonRef}
                   type="button"
                   onClick={takePhoto}
-                  disabled={isCapturing}
+                  aria-disabled={isCapturing}
                   className="h-20 rounded-control border border-dashed border-line-strong bg-surface hover:bg-surface-muted text-brand-600 flex flex-col items-center justify-center gap-1 transition-colors"
                 >
                   {isCapturing ? (
@@ -531,8 +553,8 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({
 
           <button
             type="submit"
-            disabled={isSubmitting}
-            className="w-full h-12 rounded-control bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold inline-flex items-center justify-center gap-2 shadow-elev-1 transition-colors disabled:opacity-70 disabled:cursor-wait"
+            aria-disabled={isSubmitting}
+            className="w-full h-12 rounded-control bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold inline-flex items-center justify-center gap-2 shadow-elev-1 transition-colors aria-disabled:opacity-70 aria-disabled:cursor-wait"
           >
             {isSubmitting ? (
               <>

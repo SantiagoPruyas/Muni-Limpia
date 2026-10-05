@@ -71,6 +71,8 @@
   /* La columna de la app (D1) no salta entre pestañas con y sin scroll en escritorio */
   html {
     scrollbar-gutter: stable;
+    /* Lo enfocado con Tab no queda debajo del header ni de la bottom nav fijos */
+    scroll-padding-block: 5rem;
   }
   body {
     background-color: var(--color-surface);
