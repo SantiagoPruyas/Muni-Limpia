@@ -15,6 +15,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { ZoneLocation, FilterCategory } from '../types';
+import { categoryMeta } from '../lib/categoryMeta';
 
 interface SchedulesScreenProps {
   /** Ya filtradas por App (mismo filtro que el mapa). */
@@ -72,23 +73,23 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
     <div id="schedules-screen" className="flex-1 w-full max-w-2xl mx-auto px-4 pt-4 pb-24 flex flex-col gap-4">
       {/* Header title */}
       <div>
-        <h1 className="text-2xl font-black text-[#181c1e] tracking-tight">
+        <h1 className="font-display text-2xl font-extrabold text-ink tracking-tight">
           Horarios y Rutas
         </h1>
-        <p className="text-xs text-[#555f71]">
+        <p className="text-xs text-ink-muted">
           Cronograma oficial de recolección de la Ciudad de Corrientes
         </p>
       </div>
 
       {/* Search Input */}
-      <div className="bg-white h-12 rounded-xl shadow-sm flex items-center px-3.5 gap-2.5 border border-[#e2e8f0]">
-        <Search className="w-4 h-4 text-[#555f71]" />
+      <div className="bg-surface-card h-12 rounded-xl shadow-sm flex items-center px-3.5 gap-2.5 border border-line">
+        <Search className="w-4 h-4 text-ink-muted" />
         <input
           type="text"
           value={searchFilter}
           onChange={(e) => setSearchFilter(e.target.value)}
           placeholder="Filtrar por barrio, calle o zona..."
-          className="bg-transparent border-none outline-none w-full text-sm text-[#181c1e] placeholder:text-[#555f71]/60 font-medium"
+          className="bg-transparent border-none outline-none w-full text-sm text-ink placeholder:text-ink-muted/60 font-medium"
         />
       </div>
 
@@ -98,8 +99,8 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
           onClick={() => onSelectCategory('todos')}
           className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
             activeCategory ==='todos'
-              ? 'bg-[#006b21] text-white shadow-sm'
-              : 'bg-white text-[#3e4a3c] border border-[#e2e8f0]'
+              ? 'bg-brand-600 text-white shadow-sm'
+              : 'bg-surface-card text-ink-body border border-line'
           }`}
         >
           Todos los servicios
@@ -108,8 +109,8 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
           onClick={() => onSelectCategory('residuos-comunes')}
           className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
             activeCategory ==='residuos-comunes'
-              ? 'bg-[#006b21] text-white shadow-sm'
-              : 'bg-white text-[#3e4a3c] border border-[#e2e8f0]'
+              ? 'bg-brand-600 text-white shadow-sm'
+              : 'bg-surface-card text-ink-body border border-line'
           }`}
         >
           <Trash2 className="w-3.5 h-3.5" />
@@ -119,8 +120,8 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
           onClick={() => onSelectCategory('reciclables')}
           className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
             activeCategory ==='reciclables'
-              ? 'bg-[#006b21] text-white shadow-sm'
-              : 'bg-white text-[#3e4a3c] border border-[#e2e8f0]'
+              ? 'bg-brand-600 text-white shadow-sm'
+              : 'bg-surface-card text-ink-body border border-line'
           }`}
         >
           <Recycle className="w-3.5 h-3.5" />
@@ -130,8 +131,8 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
           onClick={() => onSelectCategory('poda-escombros')}
           className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
             activeCategory ==='poda-escombros'
-              ? 'bg-[#006b21] text-white shadow-sm'
-              : 'bg-white text-[#3e4a3c] border border-[#e2e8f0]'
+              ? 'bg-brand-600 text-white shadow-sm'
+              : 'bg-surface-card text-ink-body border border-line'
           }`}
         >
           <Trees className="w-3.5 h-3.5" />
@@ -147,8 +148,8 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
             onClick={() => setSelectedDay(day.id)}
             className={`px-3 py-1 rounded-lg transition-colors whitespace-nowrap ${
               selectedDay === day.id
-                ? 'bg-[#181c1e] text-white font-bold'
-                : 'bg-[#f1f4f6] text-[#555f71] hover:bg-[#e5e9eb]'
+                ? 'bg-ink text-white font-bold'
+                : 'bg-surface-muted text-ink-muted hover:bg-brand-500/15'
             }`}
           >
             {day.label}
@@ -159,9 +160,9 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
       {/* Schedules List Cards */}
       <div className="flex flex-col gap-3.5 mt-1">
         {filteredZones.length === 0 ? (
-          <div className="bg-white rounded-2xl p-8 border border-[#e2e8f0] text-center flex flex-col items-center justify-center gap-2">
-            <Calendar className="w-10 h-10 text-[#555f71]/40" />
-            <span className="font-bold text-sm text-[#181c1e]">
+          <div className="bg-surface-card rounded-2xl p-8 border border-line text-center flex flex-col items-center justify-center gap-2">
+            <Calendar className="w-10 h-10 text-ink-muted/40" />
+            <span className="font-bold text-sm text-ink">
               Sin resultados
             </span>
             <button
@@ -171,7 +172,7 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
                 setSelectedDay('todos');
                 setSearchFilter('');
               }}
-              className="mt-2 text-xs text-[#006b21] font-bold underline"
+              className="mt-2 text-xs text-brand-600 font-bold underline"
             >
               Limpiar filtros
             </button>
@@ -179,60 +180,59 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
         ) : (
           filteredZones.map((zone) => {
             const isReminderActive = activeReminders.includes(zone.id);
+            const meta = categoryMeta[zone.category];
 
             return (
               <div
                 key={zone.id}
                 id={`schedule-card-${zone.id}`}
-                className="bg-white rounded-2xl border border-[#e2e8f0] p-4.5 shadow-sm hover:shadow-md transition-all flex flex-col gap-3.5"
+                className="bg-surface-card rounded-2xl border border-line p-4.5 shadow-sm hover:shadow-md transition-all flex flex-col gap-3.5"
               >
                 {/* Card Top Header */}
                 <div className="flex items-start justify-between">
                   <div className="flex flex-col">
                     <div className="flex items-center gap-1.5">
-                      <span className="px-2 py-0.5 bg-[#f1f4f6] text-[#006b21] font-bold text-[10px] rounded uppercase tracking-wider">
+                      <span className="px-2 py-0.5 bg-surface-muted text-brand-600 font-bold text-xs rounded uppercase tracking-wider">
                         {zone.shift}
                       </span>
-                      <span className="text-xs font-semibold text-[#555f71]">
+                      <span className="text-xs font-semibold text-ink-muted">
                         • {zone.type}
                       </span>
                     </div>
-                    <h3 className="text-lg font-bold text-[#181c1e] mt-1 font-['Public_Sans',sans-serif]">
+                    <h3 className="font-display text-lg font-bold text-ink mt-1">
                       {zone.name}
                     </h3>
-                    <div className="flex items-center gap-1 text-xs text-[#555f71]">
-                      <MapPin className="w-3.5 h-3.5 text-[#006b21]" />
+                    <div className="flex items-center gap-1 text-xs text-ink-muted">
+                      <MapPin className="w-3.5 h-3.5 text-brand-600" />
                       <span>{zone.neighborhood}</span>
                     </div>
                   </div>
 
-                  <div className="w-10 h-10 rounded-xl bg-[#f1f4f6] flex items-center justify-center text-[#006b21]">
-                    {zone.category === 'reciclables' || zone.category === 'puntos-verdes' ? (
-                      <Recycle className="w-5 h-5" />
-                    ) : zone.category === 'poda-escombros' ? (
-                      <Trees className="w-5 h-5" />
-                    ) : (
-                      <Trash2 className="w-5 h-5" />
-                    )}
+                  <div
+                    className="w-10 h-10 rounded-xl bg-surface-muted flex items-center justify-center"
+                    style={{ color: `var(--color-${meta.colorToken})` }}
+                    title={meta.label}
+                  >
+                    <meta.Icon className="w-5 h-5" />
                   </div>
                 </div>
 
                 {/* Info Grid (Days + Window) */}
-                <div className="grid grid-cols-2 gap-2 bg-[#f7fafc] border border-[#e2e8f0] rounded-xl p-3">
+                <div className="grid grid-cols-2 gap-2 bg-surface border border-line rounded-xl p-3">
                   <div className="flex flex-col">
-                    <div className="flex items-center gap-1 text-[#006b21] mb-0.5">
+                    <div className="flex items-center gap-1 text-brand-600 mb-0.5">
                       <Calendar className="w-3.5 h-3.5" />
-                      <span className="text-[10px] font-bold text-[#555f71] uppercase">Frecuencia</span>
+                      <span className="text-xs font-bold text-ink-muted uppercase">Frecuencia</span>
                     </div>
-                    <span className="text-xs font-bold text-[#181c1e]">{zone.frequency}</span>
+                    <span className="text-xs font-bold text-ink">{zone.frequency}</span>
                   </div>
 
                   <div className="flex flex-col">
-                    <div className="flex items-center gap-1 text-[#006b21] mb-0.5">
+                    <div className="flex items-center gap-1 text-brand-600 mb-0.5">
                       <Clock className="w-3.5 h-3.5" />
-                      <span className="text-[10px] font-bold text-[#555f71] uppercase">Ventana Horaria</span>
+                      <span className="text-xs font-bold text-ink-muted uppercase">Ventana Horaria</span>
                     </div>
-                    <span className="text-xs font-bold text-[#181c1e]">{zone.timeWindow}</span>
+                    <span className="text-xs font-bold text-ink">{zone.timeWindow}</span>
                   </div>
                 </div>
 
@@ -242,7 +242,7 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
                     {zone.materialsAccepted.map((mat, i) => (
                       <span
                         key={i}
-                        className="px-2 py-0.5 bg-[#f1f4f6] text-[#3e4a3c] rounded text-[10px] font-medium"
+                        className="px-2 py-0.5 bg-surface-muted text-ink-body rounded text-xs font-medium"
                       >
                         {mat}
                       </span>
@@ -251,14 +251,14 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
                 )}
 
                 {/* Action Buttons Row */}
-                <div className="flex items-center gap-2 pt-1 border-t border-[#e2e8f0]/60">
+                <div className="flex items-center gap-2 pt-1 border-t border-line/60">
                   {/* Avisarme button */}
                   <button
                     onClick={() => onToggleReminder(zone)}
-                    className={`flex-1 h-10 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                    className={`flex-1 h-12 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
                       isReminderActive
-                        ? 'bg-[#059669] text-white'
-                        : 'bg-[#006b21] text-white hover:bg-[#00872c]'
+                        ? 'bg-brand-700 text-white'
+                        : 'bg-brand-600 text-white hover:bg-brand-700'
                     }`}
                   >
                     {isReminderActive ? (
@@ -277,9 +277,9 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
                   {/* Route details button */}
                   <button
                     onClick={() => onOpenRouteDetails(zone)}
-                    className="h-10 px-3 bg-[#f1f4f6] hover:bg-[#e5e9eb] text-[#181c1e] rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors"
+                    className="h-12 px-3 bg-surface-muted hover:bg-brand-500/15 text-ink rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors"
                   >
-                    <Info className="w-3.5 h-3.5 text-[#006b21]" />
+                    <Info className="w-3.5 h-3.5 text-brand-600" />
                     <span className="hidden sm:inline">Ruta</span>
                   </button>
 
@@ -287,16 +287,16 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
                   <button
                     onClick={() => onExportSchedule(zone)}
                     title="Descargar horario"
-                    className="h-10 w-10 bg-[#f1f4f6] hover:bg-[#e5e9eb] text-[#181c1e] rounded-xl flex items-center justify-center transition-colors"
+                    className="h-12 w-12 bg-surface-muted hover:bg-brand-500/15 text-ink rounded-xl flex items-center justify-center transition-colors"
                   >
-                    <DownloadCloud className="w-4 h-4 text-[#006b21]" />
+                    <DownloadCloud className="w-4 h-4 text-brand-600" />
                   </button>
 
                   {/* Share button */}
                   <button
                     onClick={() => onShare(zone)}
                     title="Compartir"
-                    className="h-10 w-10 bg-[#f1f4f6] hover:bg-[#e5e9eb] text-[#181c1e] rounded-xl flex items-center justify-center transition-colors"
+                    className="h-12 w-12 bg-surface-muted hover:bg-brand-500/15 text-ink rounded-xl flex items-center justify-center transition-colors"
                   >
                     <Share2 className="w-4 h-4" />
                   </button>

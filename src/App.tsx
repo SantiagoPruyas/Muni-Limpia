@@ -191,7 +191,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#f7fafc] text-[#181c1e] flex flex-col font-['Public_Sans',sans-serif] selection:bg-[#006b21] selection:text-white">
+    <div className="min-h-screen bg-surface text-ink-body flex flex-col selection:bg-brand-600 selection:text-white">
       {/* Top Header */}
       <Header
         notifications={notifications}

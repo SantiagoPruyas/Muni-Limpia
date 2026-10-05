@@ -24,9 +24,11 @@ import {
   Crosshair,
   Sparkles,
   ChevronUp,
-  EyeOff
+  EyeOff,
+  type LucideIcon
 } from 'lucide-react';
 import { ZoneLocation, FilterCategory } from '../types';
+import { categoryMeta } from '../lib/categoryMeta';
 import { CORRIENTES_ZONES } from '../data/corrientesData';
 import { nextService } from '../data/schedule';
 
@@ -73,6 +75,13 @@ const TILE_LAYERS: Record<'streets' | 'satellite', { url: string; subdomains: st
   },
 };
 
+// Glifos de lucide (los mismos paths que categoryMeta.Icon) para los pins, que Leaflet recibe como HTML.
+const PIN_GLYPHS = new Map<LucideIcon, string>([
+  [Trash2, '<path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'],
+  [Recycle, '<path d="M7 19H4.815a1.83 1.83 0 0 1-1.57-.881 1.785 1.785 0 0 1-.004-1.784L7.196 9.5"/><path d="M11 19h8.203a1.83 1.83 0 0 0 1.556-.89 1.784 1.784 0 0 0 0-1.775l-1.226-2.12"/><path d="m14 16-3 3 3 3"/><path d="M8.293 13.596 7.196 9.5 3.1 10.598"/><path d="m9.344 5.811 1.093-1.892A1.83 1.83 0 0 1 11.985 3a1.784 1.784 0 0 1 1.546.888l3.943 6.843"/><path d="m13.378 9.633 4.096 1.098 1.097-4.096"/>'],
+  [Trees, '<path d="M10 10v.2A3 3 0 0 1 8.9 16H5a3 3 0 0 1-1-5.8V10a3 3 0 0 1 6 0Z"/><path d="M7 16v6"/><path d="M13 19v3"/><path d="M12 19h8.3a1 1 0 0 0 .7-1.7L18 14h.3a1 1 0 0 0 .7-1.7L16 9h.2a1 1 0 0 0 .8-1.7L13 3l-1.4 1.5"/>'],
+]);
+
 export const MapScreen: React.FC<MapScreenProps> = ({
   zones,
   selectedZone,
@@ -110,6 +119,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const isReminderActive = currentActiveZone ? activeReminders.includes(currentActiveZone.id) : false;
   // La hoja solo se muestra si la zona seleccionada pasa el filtro actual.
   const showSheet = isSheetOpen && !!currentActiveZone && zones.some((z) => z.id === currentActiveZone.id);
+  const sheetMeta = categoryMeta[currentActiveZone?.category ?? 'todos'];
 
   // Initialize Leaflet Map
   useEffect(() => {
@@ -136,7 +146,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
     // Route Polyline (Green dashed line representing collection path)
     const polyline = L.polyline(JUNIN_ROUTE_COORDS, {
-      color: '#006b21',
+      className: 'route-line',
       weight: 5,
       opacity: 0.85,
       dashArray: '8, 8',
@@ -186,28 +196,21 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
     zones.forEach((zone) => {
       const isSelected = selectedZone?.id === zone.id;
-      const isRecycle = zone.category === 'reciclables' || zone.category === 'puntos-verdes';
-      const isPoda = zone.category === 'poda-escombros';
+      const meta = categoryMeta[zone.category];
+      const color = `var(--color-${meta.colorToken})`;
 
-      const bgColor = isRecycle ? '#059669' : isPoda ? '#d97706' : '#006b21';
       const pinIconHtml = `
         <div class="relative flex items-center justify-center -translate-x-1/2 -translate-y-1/2 cursor-pointer group">
           ${
             isSelected && isSheetOpen
-              ? `<div class="absolute w-12 h-12 rounded-full animate-ping" style="background-color: ${bgColor}40;"></div>`
+              ? `<div class="absolute w-12 h-12 rounded-full animate-ping opacity-25" style="background-color: ${color};"></div>`
               : ''
           }
-          <div class="relative w-8 h-8 rounded-full shadow-lg flex items-center justify-center border-2 border-white transition-transform duration-200 group-hover:scale-110" style="background-color: ${bgColor};">
-            ${
-              isRecycle
-                ? `<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>`
-                : isPoda
-                ? `<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>`
-                : `<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>`
-            }
+          <div class="relative w-8 h-8 rounded-full shadow-lg flex items-center justify-center border-2 border-white transition-transform duration-200 group-hover:scale-110" style="background-color: ${color};">
+            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24">${PIN_GLYPHS.get(meta.Icon) ?? ''}</svg>
           </div>
-          <div class="absolute top-full mt-1 px-2 py-0.5 rounded shadow text-[10px] font-bold whitespace-nowrap bg-white text-[#181c1e] border border-[#e2e8f0] opacity-90 group-hover:opacity-100 ${
-            isSelected && isSheetOpen ? 'ring-2 ring-[#006b21] scale-105 opacity-100' : ''
+          <div class="absolute top-full mt-1 px-2 py-0.5 rounded shadow text-xs font-bold whitespace-nowrap bg-surface-card text-ink border border-line opacity-90 group-hover:opacity-100 ${
+            isSelected && isSheetOpen ? 'ring-2 ring-brand-500 scale-105 opacity-100' : ''
           }">
             ${zone.name}
           </div>
@@ -265,13 +268,13 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
     const truckIconHtml = `
       <div class="relative flex items-center justify-center -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-        <div class="w-9 h-9 bg-[#006b21] rounded-full shadow-2xl flex items-center justify-center border-2 border-white text-white animate-bounce">
+        <div class="w-9 h-9 bg-brand-600 rounded-full shadow-elev-2 flex items-center justify-center border-2 border-white text-white animate-bounce">
           <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z"></path>
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"></path>
           </svg>
         </div>
-        <div class="absolute -bottom-5 bg-[#006b21] text-white text-[8px] font-extrabold px-1.5 py-0.5 rounded-full shadow-lg whitespace-nowrap">
+        <div class="absolute -bottom-5 bg-brand-600 text-white text-xs font-extrabold px-1.5 py-0.5 rounded-full shadow-lg whitespace-nowrap">
           Móvil #14 (En vivo)
         </div>
       </div>
@@ -379,13 +382,13 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   };
 
   return (
-    <div id="map-screen" className="relative w-full h-[calc(100vh-4rem)] flex flex-col overflow-hidden bg-[#e2ecd8]">
+    <div id="map-screen" className="relative w-full h-[calc(100vh-4rem)] flex flex-col overflow-hidden bg-surface-muted">
       {/* Top Search & Filter Floating Header */}
       <div className="absolute top-0 inset-x-0 z-20 pt-3 px-4 max-w-md mx-auto flex flex-col gap-2 pointer-events-auto">
         {/* Search Bar */}
         <div className="flex items-center gap-2">
-          <div className="flex-1 bg-white h-12 rounded-2xl shadow-md flex items-center px-3.5 gap-2 border border-[#e2e8f0] relative">
-            <Search className="w-4 h-4 text-[#3e4a3c] shrink-0" />
+          <div className="flex-1 bg-surface-card h-12 rounded-2xl shadow-md flex items-center px-3.5 gap-2 border border-line relative">
+            <Search className="w-4 h-4 text-ink-body shrink-0" />
             <input
               id="map-search-input"
               type="text"
@@ -396,7 +399,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               }}
               onFocus={() => setShowSearchSuggestions(true)}
               placeholder="Buscar calle o barrio en Corrientes..."
-              className="bg-transparent border-none outline-none w-full text-sm text-[#181c1e] placeholder:text-[#555f71]/70 font-medium font-['Public_Sans',sans-serif]"
+              className="bg-transparent border-none outline-none w-full text-sm text-ink placeholder:text-ink-muted/70 font-medium"
             />
             {searchQuery && (
               <button
@@ -404,7 +407,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                   setSearchQuery('');
                   setShowSearchSuggestions(false);
                 }}
-                className="text-[#555f71] hover:text-[#181c1e] p-1"
+                className="text-ink-muted hover:text-ink p-1"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -416,7 +419,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
                 isListening
                   ? 'bg-red-500 text-white animate-pulse'
-                  : 'hover:bg-[#ebeef0] text-[#3e4a3c]'
+                  : 'hover:bg-surface-muted text-ink-body'
               }`}
             >
               <Mic className="w-4 h-4" />
@@ -427,7 +430,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             id="btn-open-filter"
             onClick={onOpenFilter}
             aria-label="Filtros avanzados"
-            className="w-12 h-12 bg-white rounded-2xl shadow-md flex items-center justify-center border border-[#e2e8f0] text-[#006b21] hover:bg-[#f1f4f6] transition-colors shrink-0"
+            className="w-12 h-12 bg-surface-card rounded-2xl shadow-md flex items-center justify-center border border-line text-brand-600 hover:bg-surface-muted transition-colors shrink-0"
           >
             <SlidersHorizontal className="w-4 h-4" />
           </button>
@@ -435,7 +438,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
         {/* Autocomplete Dropdown */}
         {showSearchSuggestions && searchQuery.trim().length > 0 && (
-          <div className="bg-white rounded-2xl shadow-2xl border border-[#e2e8f0] p-1.5 flex flex-col gap-1 max-h-52 overflow-y-auto">
+          <div className="bg-surface-card rounded-2xl shadow-elev-3 border border-line p-1.5 flex flex-col gap-1 max-h-52 overflow-y-auto">
             {zones
               .filter(
                 (z) =>
@@ -455,12 +458,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                       mapInstanceRef.current.flyTo([z.coordinates.lat, z.coordinates.lng], 16.5);
                     }
                   }}
-                  className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-[#f1f4f6] text-left transition-colors"
+                  className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-surface-muted text-left transition-colors"
                 >
-                  <MapPin className="w-4 h-4 text-[#006b21] shrink-0" />
+                  <MapPin className="w-4 h-4 text-brand-600 shrink-0" />
                   <div className="flex flex-col">
-                    <span className="text-xs font-bold text-[#181c1e]">{z.name}</span>
-                    <span className="text-[11px] text-[#555f71]">
+                    <span className="text-xs font-bold text-ink">{z.name}</span>
+                    <span className="text-xs text-ink-muted">
                       {z.neighborhood} • {z.type}
                     </span>
                   </div>
@@ -476,8 +479,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             onClick={() => onSelectCategory('todos')}
             className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap shadow-sm flex items-center gap-1.5 transition-all ${
               activeCategory ==='todos'
-                ? 'bg-[#006b21] text-white'
-                : 'bg-white/95 backdrop-blur text-[#3e4a3c] border border-[#e2e8f0] hover:bg-[#f1f4f6]'
+                ? 'bg-brand-600 text-white'
+                : 'bg-white/95 backdrop-blur text-ink-body border border-line hover:bg-surface-muted'
             }`}
           >
             Todos
@@ -488,8 +491,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             onClick={() => onSelectCategory('residuos-comunes')}
             className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap shadow-sm flex items-center gap-1.5 transition-all ${
               activeCategory ==='residuos-comunes'
-                ? 'bg-[#006b21] text-white'
-                : 'bg-white/95 backdrop-blur text-[#3e4a3c] border border-[#e2e8f0] hover:bg-[#f1f4f6]'
+                ? 'bg-brand-600 text-white'
+                : 'bg-white/95 backdrop-blur text-ink-body border border-line hover:bg-surface-muted'
             }`}
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -501,8 +504,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             onClick={() => onSelectCategory('reciclables')}
             className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap shadow-sm flex items-center gap-1.5 transition-all ${
               activeCategory ==='reciclables'
-                ? 'bg-[#006b21] text-white'
-                : 'bg-white/95 backdrop-blur text-[#3e4a3c] border border-[#e2e8f0] hover:bg-[#f1f4f6]'
+                ? 'bg-brand-600 text-white'
+                : 'bg-white/95 backdrop-blur text-ink-body border border-line hover:bg-surface-muted'
             }`}
           >
             <Recycle className="w-3.5 h-3.5" />
@@ -514,8 +517,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             onClick={() => onSelectCategory('poda-escombros')}
             className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap shadow-sm flex items-center gap-1.5 transition-all ${
               activeCategory ==='poda-escombros'
-                ? 'bg-[#006b21] text-white'
-                : 'bg-white/95 backdrop-blur text-[#3e4a3c] border border-[#e2e8f0] hover:bg-[#f1f4f6]'
+                ? 'bg-brand-600 text-white'
+                : 'bg-white/95 backdrop-blur text-ink-body border border-line hover:bg-surface-muted'
             }`}
           >
             <Trees className="w-3.5 h-3.5" />
@@ -534,14 +537,14 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       {/* Map Layer Switcher & Quick Navigation Control (Top Right) */}
       <div className="absolute top-28 right-3.5 z-20 flex flex-col gap-2 pointer-events-auto">
         {/* Layer Mode Toggle */}
-        <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-lg border border-[#e2e8f0] p-1 flex flex-col gap-1">
+        <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-lg border border-line p-1 flex flex-col gap-1">
           <button
             onClick={() => setMapLayerType('streets')}
             title="Mapa de Calles"
             className={`p-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
               mapLayerType === 'streets'
-                ? 'bg-[#006b21] text-white shadow-sm'
-                : 'text-[#555f71] hover:bg-[#f1f4f6]'
+                ? 'bg-brand-600 text-white shadow-sm'
+                : 'text-ink-muted hover:bg-surface-muted'
             }`}
           >
             <Layers className="w-4 h-4" />
@@ -553,8 +556,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             title="Vista Satelital"
             className={`p-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
               mapLayerType === 'satellite'
-                ? 'bg-[#006b21] text-white shadow-sm'
-                : 'text-[#555f71] hover:bg-[#f1f4f6]'
+                ? 'bg-brand-600 text-white shadow-sm'
+                : 'text-ink-muted hover:bg-surface-muted'
             }`}
           >
             <Sparkles className="w-4 h-4" />
@@ -563,25 +566,25 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         </div>
 
         {/* Zoom Controls */}
-        <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-lg border border-[#e2e8f0] flex flex-col overflow-hidden">
+        <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-lg border border-line flex flex-col overflow-hidden">
           <button
             onClick={handleZoomIn}
             aria-label="Acercar mapa"
-            className="w-9 h-9 flex items-center justify-center text-[#181c1e] hover:bg-[#f1f4f6] active:bg-[#e2e8f0] transition-colors border-b border-[#e2e8f0]"
+            className="w-9 h-9 flex items-center justify-center text-ink hover:bg-surface-muted active:bg-line transition-colors border-b border-line"
           >
             <ZoomIn className="w-4 h-4" />
           </button>
           <button
             onClick={handleZoomOut}
             aria-label="Alejar mapa"
-            className="w-9 h-9 flex items-center justify-center text-[#181c1e] hover:bg-[#f1f4f6] active:bg-[#e2e8f0] transition-colors border-b border-[#e2e8f0]"
+            className="w-9 h-9 flex items-center justify-center text-ink hover:bg-surface-muted active:bg-line transition-colors border-b border-line"
           >
             <ZoomOut className="w-4 h-4" />
           </button>
           <button
             onClick={handleResetCenter}
             title="Centrar en Corrientes"
-            className="w-9 h-9 flex items-center justify-center text-[#006b21] hover:bg-[#f1f4f6] active:bg-[#e2e8f0] transition-colors"
+            className="w-9 h-9 flex items-center justify-center text-brand-600 hover:bg-surface-muted active:bg-line transition-colors"
           >
             <Crosshair className="w-4 h-4" />
           </button>
@@ -600,10 +603,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           id="btn-my-location"
           onClick={handleLocateUser}
           aria-label="Mi Ubicación"
-          className="w-11 h-11 bg-white/95 backdrop-blur-md rounded-2xl shadow-lg flex items-center justify-center border border-[#e2e8f0] text-[#006b21] hover:bg-[#f1f4f6] transition-transform active:scale-95 group relative"
+          className="w-11 h-11 bg-white/95 backdrop-blur-md rounded-2xl shadow-lg flex items-center justify-center border border-line text-brand-600 hover:bg-surface-muted transition-transform active:scale-95 group relative"
         >
           <Navigation className="w-4 h-4 rotate-45" />
-          <div className="absolute right-full mr-2.5 top-1/2 -translate-y-1/2 bg-[#181c1e] text-white px-2 py-1 rounded text-[10px] font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow">
+          <div className="absolute right-full mr-2.5 top-1/2 -translate-y-1/2 bg-ink text-white px-2 py-1 rounded text-xs font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow">
             Mi Ubicación
           </div>
         </button>
@@ -613,15 +616,15 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           id="btn-live-truck-toggle"
           onClick={() => setShowLiveTruck(!showLiveTruck)}
           aria-label="Rastreo de camión en vivo"
-          className={`w-11 h-11 rounded-2xl shadow-xl flex items-center justify-center text-white transition-all active:scale-95 relative group ${
-            showLiveTruck ? 'bg-[#006b21] hover:bg-[#00872c]' : 'bg-[#555f71] hover:bg-[#3e4a3c]'
+          className={`w-11 h-11 rounded-2xl shadow-elev-2 flex items-center justify-center text-white transition-all active:scale-95 relative group ${
+            showLiveTruck ? 'bg-brand-600 hover:bg-brand-700' : 'bg-ink-muted hover:bg-ink-body'
           }`}
         >
           <Truck className="w-4 h-4" />
-          <div className="absolute -top-1 -right-1 bg-[#DC2626] text-white text-[8px] font-bold px-1 py-0.2 rounded-full shadow whitespace-nowrap">
+          <div className="absolute -top-1 -right-1 bg-danger text-white text-xs font-bold px-1 py-0.2 rounded-full shadow whitespace-nowrap">
             {showLiveTruck ? 'GPS' : 'OFF'}
           </div>
-          <div className="absolute right-full mr-2.5 top-1/2 -translate-y-1/2 bg-[#181c1e] text-white px-2 py-1 rounded text-[10px] font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow">
+          <div className="absolute right-full mr-2.5 top-1/2 -translate-y-1/2 bg-ink text-white px-2 py-1 rounded text-xs font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow">
             {showLiveTruck ? 'Pausar camión' : 'Ver camión recolector'}
           </div>
         </button>
@@ -639,15 +642,15 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 setIsSheetOpen(true);
               }
             }}
-            className="bg-white/95 backdrop-blur-md shadow-lg border border-[#e2e8f0] px-4 py-2 rounded-full flex items-center gap-2 text-xs font-bold text-[#181c1e] hover:bg-white active:scale-98 transition-all"
+            className="bg-white/95 backdrop-blur-md shadow-lg border border-line px-4 py-2 rounded-full flex items-center gap-2 text-xs font-bold text-ink hover:bg-surface-card active:scale-98 transition-all"
           >
             {zones.length === 0 ? (
               <span>Sin resultados · Limpiar filtros</span>
             ) : (
               <>
-                <span className="w-2 h-2 rounded-full bg-[#006b21] animate-pulse"></span>
+                <span className="w-2 h-2 rounded-full bg-brand-600 animate-pulse"></span>
                 <span>Toca un punto o busca una calle para ver horarios</span>
-                <ChevronUp className="w-4 h-4 text-[#555f71]" />
+                <ChevronUp className="w-4 h-4 text-ink-muted" />
               </>
             )}
           </button>
@@ -661,13 +664,13 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             /* SCREENSHOT 1: Calle Junín 1200 Card */
             <div
               id="sheet-junin-card"
-              className="bg-white rounded-3xl shadow-2xl border border-[#e2e8f0] p-4 sm:p-5 flex flex-col gap-3.5 transition-all relative"
+              className="bg-surface-card rounded-3xl shadow-elev-3 border border-line p-4 sm:p-5 flex flex-col gap-3.5 transition-all relative"
             >
               {/* Close Button on top-right */}
               <button
                 onClick={() => setIsSheetOpen(false)}
                 title="Cerrar y ver mapa completo"
-                className="absolute top-3.5 right-3.5 w-7 h-7 rounded-full bg-[#f1f4f6] hover:bg-[#e2e8f0] text-[#555f71] flex items-center justify-center transition-colors z-10"
+                className="absolute top-3.5 right-3.5 w-7 h-7 rounded-full bg-surface-muted hover:bg-line text-ink-muted flex items-center justify-center transition-colors z-10"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -675,7 +678,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               {/* Drag Indicator to dismiss */}
               <div
                 onClick={() => setIsSheetOpen(false)}
-                className="w-10 h-1 bg-[#e0e3e5] rounded-full mx-auto -mt-1 cursor-pointer hover:bg-[#bdcab8]"
+                className="w-10 h-1 bg-line rounded-full mx-auto -mt-1 cursor-pointer hover:bg-line-strong"
                 title="Cerrar panel"
               ></div>
 
@@ -683,43 +686,43 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               <div className="flex items-start justify-between pr-8">
                 <div className="flex flex-col">
                   <div className="flex items-center gap-1.5">
-                    <span className="px-2 py-0.5 bg-[#f1f4f6] text-[#006b21] font-bold text-[11px] rounded tracking-wide">
+                    <span className="px-2 py-0.5 bg-surface-muted text-brand-600 font-bold text-xs rounded tracking-wide">
                       {currentActiveZone.status}
                     </span>
-                    <span className="text-xs text-[#555f71] font-medium">
+                    <span className="text-xs text-ink-muted font-medium">
                       • {currentActiveZone.type}
                     </span>
                   </div>
-                  <h2 className="text-xl font-bold text-[#181c1e] mt-1 font-['Public_Sans',sans-serif]">
+                  <h2 className="font-display text-xl font-bold text-ink mt-1">
                     {currentActiveZone.name}
                   </h2>
-                  <p className="text-xs text-[#555f71]">{currentActiveZone.subtitle}</p>
+                  <p className="text-xs text-ink-muted">{currentActiveZone.subtitle}</p>
                 </div>
 
                 {/* Green Remaining Time Box */}
-                <div className="bg-[#006b21] text-white px-2.5 py-1.5 rounded-2xl shadow flex flex-col items-center justify-center leading-none min-w-[64px]">
+                <div className="bg-brand-600 text-white px-2.5 py-1.5 rounded-2xl shadow flex flex-col items-center justify-center leading-none min-w-[64px]">
                   <span className="text-xs font-bold">{nextService(currentActiveZone).label}</span>
                 </div>
               </div>
 
               {/* Frequency & Time Window Grid */}
               <div className="grid grid-cols-2 gap-2.5">
-                <div className="bg-[#f7fafc] border border-[#e2e8f0] rounded-2xl p-3 flex flex-col justify-center">
-                  <div className="flex items-center gap-1.5 text-[#006b21] mb-1">
+                <div className="bg-surface border border-line rounded-2xl p-3 flex flex-col justify-center">
+                  <div className="flex items-center gap-1.5 text-brand-600 mb-1">
                     <Calendar className="w-4 h-4" />
-                    <span className="text-[11px] text-[#555f71] font-semibold">Frecuencia</span>
+                    <span className="text-xs text-ink-muted font-semibold">Frecuencia</span>
                   </div>
-                  <span className="text-sm font-bold text-[#181c1e]">
+                  <span className="text-sm font-bold text-ink">
                     {currentActiveZone.frequency}
                   </span>
                 </div>
 
-                <div className="bg-[#f7fafc] border border-[#e2e8f0] rounded-2xl p-3 flex flex-col justify-center">
-                  <div className="flex items-center gap-1.5 text-[#006b21] mb-1">
+                <div className="bg-surface border border-line rounded-2xl p-3 flex flex-col justify-center">
+                  <div className="flex items-center gap-1.5 text-brand-600 mb-1">
                     <Clock className="w-4 h-4" />
-                    <span className="text-[11px] text-[#555f71] font-semibold">Ventana</span>
+                    <span className="text-xs text-ink-muted font-semibold">Ventana</span>
                   </div>
-                  <span className="text-sm font-bold text-[#181c1e]">
+                  <span className="text-sm font-bold text-ink">
                     {currentActiveZone.timeWindow}
                   </span>
                 </div>
@@ -732,8 +735,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                   onClick={() => onToggleReminder(currentActiveZone)}
                   className={`flex-1 h-12 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-sm active:scale-98 ${
                     isReminderActive
-                      ? 'bg-[#059669] text-white ring-2 ring-[#81fc89]'
-                      : 'bg-[#006b21] text-white hover:bg-[#00872c]'
+                      ? 'bg-brand-700 text-white ring-2 ring-brand-accent'
+                      : 'bg-brand-600 text-white hover:bg-brand-700'
                   }`}
                 >
                   {isReminderActive ? (
@@ -753,7 +756,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                   id="btn-share-junin"
                   onClick={() => onShare(currentActiveZone)}
                   aria-label="Compartir información de zona"
-                  className="w-12 h-12 bg-[#f1f4f6] hover:bg-[#e5e9eb] rounded-2xl flex items-center justify-center text-[#181c1e] transition-colors shrink-0"
+                  className="w-12 h-12 bg-surface-muted hover:bg-brand-500/15 rounded-2xl flex items-center justify-center text-ink transition-colors shrink-0"
                 >
                   <Share2 className="w-4 h-4" />
                 </button>
@@ -763,13 +766,13 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             /* SCREENSHOT 2: Zona Centro / Punto Verde Card */
             <div
               id="sheet-zonacentro-card"
-              className="bg-white rounded-3xl shadow-2xl border border-[#e2e8f0] p-4 sm:p-5 flex flex-col gap-3.5 transition-all relative"
+              className="bg-surface-card rounded-3xl shadow-elev-3 border border-line p-4 sm:p-5 flex flex-col gap-3.5 transition-all relative"
             >
               {/* Close Button on top-right */}
               <button
                 onClick={() => setIsSheetOpen(false)}
                 title="Cerrar y ver mapa completo"
-                className="absolute top-3.5 right-3.5 w-7 h-7 rounded-full bg-[#f1f4f6] hover:bg-[#e2e8f0] text-[#555f71] flex items-center justify-center transition-colors z-10"
+                className="absolute top-3.5 right-3.5 w-7 h-7 rounded-full bg-surface-muted hover:bg-line text-ink-muted flex items-center justify-center transition-colors z-10"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -777,7 +780,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               {/* Drag Indicator */}
               <div
                 onClick={() => setIsSheetOpen(false)}
-                className="w-10 h-1 bg-[#e0e3e5] rounded-full mx-auto -mt-1 cursor-pointer hover:bg-[#bdcab8]"
+                className="w-10 h-1 bg-line rounded-full mx-auto -mt-1 cursor-pointer hover:bg-line-strong"
                 title="Cerrar panel"
               ></div>
 
@@ -785,49 +788,47 @@ export const MapScreen: React.FC<MapScreenProps> = ({
               <div className="flex items-start justify-between pr-8">
                 <div>
                   <div className="flex items-center gap-1.5">
-                    <span className="px-2 py-0.5 bg-[#f1f4f6] text-[#006b21] font-bold text-[10px] rounded tracking-wide">
+                    <span className="px-2 py-0.5 bg-surface-muted text-brand-600 font-bold text-xs rounded tracking-wide">
                       {currentActiveZone.status}
                     </span>
-                    <span className="text-xs text-[#555f71] font-medium">
+                    <span className="text-xs text-ink-muted font-medium">
                       • {currentActiveZone.type}
                     </span>
                   </div>
-                  <h2 className="text-xl font-bold text-[#181c1e] font-['Public_Sans',sans-serif] mt-1">
+                  <h2 className="font-display text-xl font-bold text-ink mt-1">
                     {currentActiveZone.name}
                   </h2>
-                  <p className="text-xs text-[#555f71] mt-0.5">{currentActiveZone.subtitle}</p>
+                  <p className="text-xs text-ink-muted mt-0.5">{currentActiveZone.subtitle}</p>
                 </div>
 
-                <div className="w-10 h-10 bg-[#f1f4f6] rounded-2xl flex items-center justify-center text-[#006b21] shrink-0">
-                  {currentActiveZone.category === 'reciclables' || currentActiveZone.category === 'puntos-verdes' ? (
-                    <Recycle className="w-5 h-5" />
-                  ) : currentActiveZone.category === 'poda-escombros' ? (
-                    <Trees className="w-5 h-5" />
-                  ) : (
-                    <Trash2 className="w-5 h-5" />
-                  )}
+                <div
+                  className="w-10 h-10 bg-surface-muted rounded-2xl flex items-center justify-center shrink-0"
+                  style={{ color: `var(--color-${sheetMeta.colorToken})` }}
+                  title={sheetMeta.label}
+                >
+                  <sheetMeta.Icon className="w-5 h-5" />
                 </div>
               </div>
 
               {/* Details Box with Dividers */}
-              <div className="bg-[#f7fafc] border border-[#e2e8f0] rounded-2xl p-3.5 flex flex-col gap-2.5">
+              <div className="bg-surface border border-line rounded-2xl p-3.5 flex flex-col gap-2.5">
                 <div className="flex items-center gap-3">
-                  <Calendar className="w-4 h-4 text-[#006b21] shrink-0" />
+                  <Calendar className="w-4 h-4 text-brand-600 shrink-0" />
                   <div className="flex flex-col">
-                    <span className="text-[10px] text-[#555f71] font-semibold uppercase">Días</span>
-                    <span className="text-xs font-semibold text-[#181c1e]">
+                    <span className="text-xs text-ink-muted font-semibold uppercase">Días</span>
+                    <span className="text-xs font-semibold text-ink">
                       {currentActiveZone.frequency}
                     </span>
                   </div>
                 </div>
 
-                <div className="h-px w-full bg-[#e2e8f0]" />
+                <div className="h-px w-full bg-line" />
 
                 <div className="flex items-center gap-3">
-                  <Clock className="w-4 h-4 text-[#006b21] shrink-0" />
+                  <Clock className="w-4 h-4 text-brand-600 shrink-0" />
                   <div className="flex flex-col">
-                    <span className="text-[10px] text-[#555f71] font-semibold uppercase">Horario</span>
-                    <span className="text-xs font-semibold text-[#181c1e]">
+                    <span className="text-xs text-ink-muted font-semibold uppercase">Horario</span>
+                    <span className="text-xs font-semibold text-ink">
                       {currentActiveZone.timeWindow}
                     </span>
                   </div>
@@ -839,7 +840,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 <button
                   id="btn-ver-detalles-ruta"
                   onClick={() => onOpenRouteDetails(currentActiveZone)}
-                  className="flex-1 h-12 bg-[#ebeef0] hover:bg-[#e0e3e5] text-[#006b21] font-bold text-sm rounded-2xl transition-all flex items-center justify-center gap-2 active:scale-98"
+                  className="flex-1 h-12 bg-surface-muted hover:bg-brand-500/15 text-brand-600 font-bold text-sm rounded-2xl transition-all flex items-center justify-center gap-2 active:scale-98"
                 >
                   <Info className="w-4 h-4" />
                   Ver Detalles de Ruta
@@ -849,7 +850,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                   id="btn-share-zonacentro"
                   onClick={() => onShare(currentActiveZone)}
                   aria-label="Compartir"
-                  className="w-12 h-12 bg-[#f1f4f6] hover:bg-[#e5e9eb] rounded-2xl flex items-center justify-center text-[#181c1e] transition-colors shrink-0"
+                  className="w-12 h-12 bg-surface-muted hover:bg-brand-500/15 rounded-2xl flex items-center justify-center text-ink transition-colors shrink-0"
                 >
                   <Share2 className="w-4 h-4" />
                 </button>
