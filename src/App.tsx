@@ -153,15 +153,15 @@ export default function App() {
     }
   };
 
-  // Descargas (D2): el toast "Generando…" se transforma en el resultado.
-  const runDownload = (loadingTitle: string, doneTitle: string, download: () => string) => {
+  // Descargas (D2): el toast "Generando…" se transforma en el resultado cuando sale el archivo.
+  const runDownload = (loadingTitle: string, doneTitle: string, download: () => Promise<string>) => {
     const id = addToast({ type: 'loading', title: loadingTitle });
     setTimeout(() => {
-      try {
-        updateToast(id, { type: 'success', title: doneTitle, message: download() });
-      } catch {
-        updateToast(id, { type: 'error', title: 'No se pudo descargar', message: 'Probá de nuevo en unos segundos.' });
-      }
+      download()
+        .then((fileName) => updateToast(id, { type: 'success', title: doneTitle, message: fileName }))
+        .catch(() =>
+          updateToast(id, { type: 'error', title: 'No se pudo descargar', message: 'Probá de nuevo en unos segundos.' })
+        );
     }, 400);
   };
 

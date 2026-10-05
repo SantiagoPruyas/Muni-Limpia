@@ -23,13 +23,13 @@ const inlineSvg = (svg: string, className: string, label: string) =>
 
 /**
  * Arma un .html imprimible (UTF-8, A4) con los logos oficiales y lo descarga con <a download>.
- * Devuelve el nombre del archivo en el acto; la descarga sale cuando terminan de cargar los logos.
+ * Resuelve con el nombre del archivo cuando la descarga ya salió (después de cargar los logos).
  */
-function downloadHtml(fileName: string, title: string, body: string): string {
-  Promise.all([fetchSvg('municipalidad-h-color'), fetchSvg('muni-limpia-h')]).then(([municipalidadSvg, muniLimpiaSvg]) =>
-    saveHtml(fileName, title, body, municipalidadSvg, muniLimpiaSvg)
-  );
-  return fileName;
+function downloadHtml(fileName: string, title: string, body: string): Promise<string> {
+  return Promise.all([fetchSvg('municipalidad-h-color'), fetchSvg('muni-limpia-h')]).then(([municipalidadSvg, muniLimpiaSvg]) => {
+    saveHtml(fileName, title, body, municipalidadSvg, muniLimpiaSvg);
+    return fileName;
+  });
 }
 
 function saveHtml(fileName: string, title: string, body: string, municipalidadSvg: string, muniLimpiaSvg: string) {
@@ -103,8 +103,8 @@ ${inlineSvg(muniLimpiaSvg, 'logo-app', 'Muni Limpia')}
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-export function downloadReceipt(report: IncidentReport): string {
-  const createdAt = new Date(report.createdAt).toLocaleString('es-AR', { dateStyle: 'long', timeStyle: 'short' });
+export function downloadReceipt(report: IncidentReport): Promise<string> {
+  const createdAt = new Date(report.createdAt).toLocaleString('es-AR', { dateStyle: 'long', timeStyle: 'short', timeZone: TIME_ZONE });
   return downloadHtml(
     `MuniLimpia_Reclamo_${report.code}.html`,
     `Comprobante de reclamo ${report.code}`,
@@ -124,7 +124,7 @@ export function downloadReceipt(report: IncidentReport): string {
   );
 }
 
-export function downloadSchedule(zone: ZoneLocation): string {
+export function downloadSchedule(zone: ZoneLocation): Promise<string> {
   return downloadHtml(
     `MuniLimpia_Horario_${zone.id}.html`,
     `Horario de recolección · ${zone.name}`,
