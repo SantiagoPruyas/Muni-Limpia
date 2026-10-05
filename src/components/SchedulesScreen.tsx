@@ -44,6 +44,9 @@ const pillClass = (active: boolean, padding = 'px-4') =>
       : 'bg-surface-card text-ink-body border border-line hover:border-brand-500'
   }`;
 
+/** Sin tildes ni mayúsculas: "camba" encuentra "Cambá Cuá". */
+const foldText = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+
 const statusChipClass = {
   'en-curso': 'bg-brand-600 text-white',
   hoy: 'bg-brand-soft text-brand-700',
@@ -71,12 +74,12 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
   // Filtros del mapa que esta pantalla no muestra: barrio y turno (la categoría se ve en las píldoras).
   const hiddenFilterCount = activeFilterCount - (activeCategory === 'todos' ? 0 : 1);
 
-  const query = searchFilter.trim().toLowerCase();
+  const query = foldText(searchFilter.trim());
   const filteredZones = zones.filter((zone) => {
     const matchesSearch =
-      zone.name.toLowerCase().includes(query) ||
-      zone.neighborhood.toLowerCase().includes(query) ||
-      zone.address.toLowerCase().includes(query);
+      foldText(zone.name).includes(query) ||
+      foldText(zone.neighborhood).includes(query) ||
+      foldText(zone.address).includes(query);
     const matchesDay = day === 'todos' || zone.days.includes(day);
     return matchesSearch && matchesDay;
   });

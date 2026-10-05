@@ -157,7 +157,10 @@ export const resetMapHint = () => {
   mapHintDismissed = false;
 };
 
-const floatingButton = 'w-11 h-11 rounded-control shadow-elev-2 border border-line flex items-center justify-center transition-colors';
+/** Sin tildes ni mayúsculas: "camba" encuentra "Cambá Cuá". */
+const foldText = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+
+const floatingButton ='w-11 h-11 rounded-control shadow-elev-2 border border-line flex items-center justify-center transition-colors';
 
 export const MapScreen: React.FC<MapScreenProps> = ({
   zones,
@@ -448,11 +451,12 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     mapInstanceRef.current?.flyTo(CITY_CENTER, 15);
   };
 
+  const query = foldText(searchQuery);
   const suggestions = zones.filter(
     (z) =>
-      z.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      z.neighborhood.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      z.address.toLowerCase().includes(searchQuery.toLowerCase())
+      foldText(z.name).includes(query) ||
+      foldText(z.neighborhood).includes(query) ||
+      foldText(z.address).includes(query)
   );
 
   return (
