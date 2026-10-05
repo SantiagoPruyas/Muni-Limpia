@@ -1,5 +1,6 @@
 import React from 'react';
 import { CheckCircle2, AlertCircle, Info, Loader2, X } from 'lucide-react';
+import { APP_COLUMN } from '../lib/layout';
 
 export interface ToastMessage {
   id: string;
@@ -15,10 +16,13 @@ interface ToastProps {
 }
 
 export const ToastContainer: React.FC<ToastProps> = ({ toasts, onDismiss }) => {
-  if (toasts.length === 0) return null;
-
+  // La región viva existe siempre: si se monta junto con el toast, los lectores no lo anuncian.
   return (
-    <div className="fixed top-18 right-4 left-4 sm:left-auto sm:w-96 z-50 flex flex-col gap-2 pointer-events-none">
+    <div
+      role="status"
+      aria-live="polite"
+      className={`fixed top-18 inset-x-0 z-50 ${APP_COLUMN} px-4 flex flex-col gap-2 pointer-events-none`}
+    >
       {toasts.map((t) => (
         <div
           key={t.id}
@@ -49,7 +53,9 @@ export const ToastContainer: React.FC<ToastProps> = ({ toasts, onDismiss }) => {
           </div>
 
           <button
+            type="button"
             onClick={() => onDismiss(t.id)}
+            aria-label="Cerrar aviso"
             className="text-ink-muted hover:text-ink p-1 -mr-1 -mt-1"
           >
             <X className="w-4 h-4" />

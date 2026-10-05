@@ -25,9 +25,25 @@ import { ProfileModal } from './components/ProfileModal';
 import { FilterModal } from './components/FilterModal';
 import { ShareModal } from './components/ShareModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
+import { DesktopPanel } from './components/DesktopPanel';
 import { downloadReceipt, downloadSchedule } from './services/downloadService';
+import { APP_COLUMN } from './lib/layout';
 
 const DEFAULT_FILTERS: ZoneFilters = { category: 'todos', neighborhood: 'todos', shift: 'todos' };
+const matchesFilters = (z: ZoneLocation, f: ZoneFilters) =>
+  (f.category === 'todos' || z.category === f.category) &&
+  (f.neighborhood === 'todos' || z.neighborhood === f.neighborhood) &&
+  (f.shift === 'todos' || z.shift === f.shift);
+const INITIAL_REMINDERS = ['junin-1200'];
+// Perfil demo ficticio (D5)
+const INITIAL_PROFILE: UserProfile = {
+  name: 'Vecina/o Demo',
+  email: 'vecino.demo@example.com',
+  neighborhood: 'Barrio Centro',
+  address: 'Calle Junín 1200, Corrientes',
+  notificationsEnabled: true,
+  soundEnabled: true,
+};
 const MAX_TOASTS = 2;
 const TOAST_MS = 4500;
 
@@ -49,22 +65,13 @@ export default function App() {
   // Filtro único de zonas: lo leen las píldoras del mapa, FilterModal y Horarios.
   // Un resultado vacío queda vacío (las pantallas muestran "Limpiar filtros").
   const [filters, setFilters] = useState<ZoneFilters>(DEFAULT_FILTERS);
-  const filteredZones = useMemo(
-    () =>
-      CORRIENTES_ZONES.filter(
-        (z) =>
-          (filters.category === 'todos' || z.category === filters.category) &&
-          (filters.neighborhood === 'todos' || z.neighborhood === filters.neighborhood) &&
-          (filters.shift === 'todos' || z.shift === filters.shift)
-      ),
-    [filters]
-  );
+  const filteredZones = useMemo(() => CORRIENTES_ZONES.filter((z) => matchesFilters(z, filters)), [filters]);
   const activeFilterCount = Object.values(filters).filter((v) => v !== 'todos').length;
   const setCategory = (category: FilterCategory) => setFilters((prev) => ({ ...prev, category }));
   const clearFilters = () => setFilters(DEFAULT_FILTERS);
 
   const [selectedZone, setSelectedZone] = useState<ZoneLocation>(CORRIENTES_ZONES[0]); // Junin 1200
-  const [activeReminders, setActiveReminders] = useState<string[]>(['junin-1200']);
+  const [activeReminders, setActiveReminders] = useState<string[]>(INITIAL_REMINDERS);
 
   // Seleccionar una zona que el filtro oculta (voz, notificaciones) limpia el filtro.
   const selectZone = (zone: ZoneLocation) => {
@@ -75,17 +82,10 @@ export default function App() {
   // Citizen Reports & Notifications State
   const [reports, setReports] = useState<IncidentReport[]>(INITIAL_REPORTS);
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
-  const reportSeq = useRef(Math.max(...INITIAL_REPORTS.map((r) => Number(r.code.split('-')[2]))));
+  const initialReportSeq = Math.max(...INITIAL_REPORTS.map((r) => Number(r.code.split('-')[2])));
+  const reportSeq = useRef(initialReportSeq);
 
-  // Perfil demo ficticio (D5)
-  const [profile, setProfile] = useState<UserProfile>({
-    name: 'Vecina/o Demo',
-    email: 'vecino.demo@example.com',
-    neighborhood: 'Barrio Centro',
-    address: 'Calle Junín 1200, Corrientes',
-    notificationsEnabled: true,
-    soundEnabled: true,
-  });
+  const [profile, setProfile] = useState<UserProfile>(INITIAL_PROFILE);
 
   // Modals visibility state
   const [modalRouteZone, setModalRouteZone] = useState<ZoneLocation | null>(null);
@@ -202,18 +202,43 @@ export default function App() {
     });
   };
 
+  // Tocar una notificación la marca como leída y, si tiene zona, la abre en el mapa.
+  const handleOpenNotification = (notification: NotificationItem) => {
+    setNotifications((prev) => prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n)));
+    const zone = CORRIENTES_ZONES.find((z) => z.id === notification.zoneId);
+    if (zone) {
+      selectZone(zone);
+      setMapSheetOpen(true);
+      setActiveTab('mapa');
+    }
+  };
+
+  // "Restablecer demo": vuelve todo a un primer arranque.
+  const handleResetDemo = () => {
+    setReports(INITIAL_REPORTS);
+    setNotifications(INITIAL_NOTIFICATIONS);
+    setActiveReminders(INITIAL_REMINDERS);
+    setFilters(DEFAULT_FILTERS);
+    setSelectedZone(CORRIENTES_ZONES[0]);
+    setProfile(INITIAL_PROFILE);
+    reportSeq.current = initialReportSeq;
+    setActiveTab('inicio');
+    setToasts([]);
+    addToast({ type: 'info', title: 'Demo restablecida', message: 'Volvimos todo al estado inicial.' });
+  };
+
   return (
     <div className="min-h-screen bg-surface text-ink-body flex flex-col selection:bg-brand-600 selection:text-white">
       {/* Top Header */}
       <Header
         notifications={notifications}
-        profile={profile}
+        onGoHome={() => setActiveTab('inicio')}
         onOpenNotifications={() => setShowNotificationsModal(true)}
         onOpenProfile={() => setShowProfileModal(true)}
       />
 
-      {/* Main Dynamic View Content (pt-16 compensates for fixed header) */}
-      <main className="flex-1 w-full pt-16 flex flex-col">
+      {/* Columna de la app (D1). pt-16 compensa el header fijo. */}
+      <main className={`flex-1 ${APP_COLUMN} lg:border-x lg:border-line pt-16 flex flex-col`}>
         {activeTab === 'mapa' && (
           <MapScreen
             zones={filteredZones}
@@ -303,19 +328,14 @@ export default function App() {
           onClose={() => setShowNotificationsModal(false)}
           onMarkAllRead={handleMarkAllNotificationsRead}
           onClearAll={() => setNotifications([])}
-          onSelectZoneById={(zoneId) => {
-            const found = CORRIENTES_ZONES.find((z) => z.id === zoneId);
-            if (found) {
-              selectZone(found);
-              setActiveTab('mapa');
-            }
-          }}
+          onOpenNotification={handleOpenNotification}
         />
       )}
 
       {showProfileModal && (
         <ProfileModal
           profile={profile}
+          onResetDemo={handleResetDemo}
           onClose={() => setShowProfileModal(false)}
           onSaveProfile={(newProf) => {
             setProfile(newProf);
@@ -333,6 +353,7 @@ export default function App() {
           filters={filters}
           onClose={() => setShowFilterModal(false)}
           onApplyFilters={setFilters}
+          countResults={(f) => CORRIENTES_ZONES.filter((z) => matchesFilters(z, f)).length}
         />
       )}
 
@@ -342,6 +363,8 @@ export default function App() {
           onClose={() => setShareZone(null)}
         />
       )}
+
+      <DesktopPanel />
 
       {/* Toast Notification Container */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />

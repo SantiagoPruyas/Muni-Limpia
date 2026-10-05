@@ -78,6 +78,10 @@
 }
 
 @layer base {
+  /* La columna de la app (D1) no salta entre pestañas con y sin scroll en escritorio */
+  html {
+    scrollbar-gutter: stable;
+  }
   body {
     background-color: var(--color-surface);
     color: var(--color-ink-body);

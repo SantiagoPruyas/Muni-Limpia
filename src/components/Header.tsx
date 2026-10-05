@@ -1,17 +1,19 @@
 import React from 'react';
-import { Bell, User, Recycle } from 'lucide-react';
-import { NotificationItem, UserProfile } from '../types';
+import { Bell, User } from 'lucide-react';
+import { NotificationItem } from '../types';
+import { BrandLogo } from './BrandLogo';
+import { APP_COLUMN } from '../lib/layout';
 
 interface HeaderProps {
   notifications: NotificationItem[];
-  profile: UserProfile;
+  onGoHome: () => void;
   onOpenNotifications: () => void;
   onOpenProfile: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   notifications,
-  profile,
+  onGoHome,
   onOpenNotifications,
   onOpenProfile,
 }) => {
@@ -20,50 +22,44 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header
       id="muni-header"
-      className="fixed top-0 w-full z-40 bg-surface-card/90 backdrop-blur-md border-b border-line/80 shadow-[0_1px_8px_rgba(0,0,0,0.03)]"
+      className={`fixed top-0 inset-x-0 z-40 ${APP_COLUMN} bg-surface-card border-b border-line lg:border-x`}
     >
-      <div className="max-w-7xl mx-auto h-16 flex items-center justify-between px-4 sm:px-6">
-        {/* Brand */}
-        <div className="flex items-center gap-2.5 cursor-pointer">
-          <div className="w-9 h-9 rounded-xl bg-brand-600 flex items-center justify-center shadow-sm text-white transition-transform active:scale-95">
-            <Recycle className="w-5 h-5 text-white" />
-          </div>
-          <div className="flex flex-col">
-            <span className="font-display font-bold text-[22px] text-brand-600 tracking-tight leading-none">
-              Muni Limpia
-            </span>
-            <span className="text-xs text-ink-muted font-medium tracking-wide uppercase">
-              Corrientes Ciudad
-            </span>
-          </div>
-        </div>
+      <div className="h-16 flex items-center justify-between px-4">
+        <button
+          type="button"
+          onClick={onGoHome}
+          aria-label="Muni Limpia, ir a inicio"
+          className="-ml-1 p-1 rounded-control"
+        >
+          <BrandLogo variant="muni-limpia-h" className="h-8 w-auto" />
+        </button>
 
-        {/* Action icons */}
-        <div className="flex items-center gap-2">
-          {/* Notification button with badge */}
+        <div className="flex items-center gap-1">
           <button
             id="btn-notifications"
+            type="button"
             onClick={onOpenNotifications}
-            aria-label="Notificaciones"
-            className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-muted text-ink-body transition-colors relative"
+            aria-label={unreadCount > 0 ? `Notificaciones, ${unreadCount} sin leer` : 'Notificaciones'}
+            className="w-11 h-11 flex items-center justify-center rounded-full hover:bg-surface-muted text-ink-body transition-colors relative"
           >
             <Bell className="w-5 h-5" />
             {unreadCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-danger text-white text-xs font-bold rounded-full flex items-center justify-center animate-pulse">
+              <span className="absolute top-1.5 right-1.5 min-w-4 h-4 px-1 bg-danger text-white text-xs font-semibold rounded-full flex items-center justify-center tabular-nums">
                 {unreadCount}
               </span>
             )}
           </button>
 
-          {/* Profile button */}
           <button
             id="btn-profile"
+            type="button"
             onClick={onOpenProfile}
-            aria-label="Perfil y Configuración"
-            className="w-9 h-9 rounded-full bg-brand-600 hover:bg-brand-700 text-white flex items-center justify-center transition-all shadow-sm active:scale-95 relative"
+            aria-label="Perfil y configuración"
+            className="w-11 h-11 flex items-center justify-center rounded-full group"
           >
-            <User className="w-4 h-4" />
-            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-brand-accent border-2 border-white rounded-full"></span>
+            <span className="w-10 h-10 rounded-full bg-brand-600 group-hover:bg-brand-700 text-white flex items-center justify-center transition-colors">
+              <User className="w-5 h-5" />
+            </span>
           </button>
         </div>
       </div>
