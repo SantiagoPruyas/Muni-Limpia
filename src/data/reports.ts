@@ -16,6 +16,14 @@ export const REPORT_CATEGORIES: {
   { id: 'otro', label: 'Otro reclamo', desc: 'Cuestiones generales de higiene urbana', Icon: ClipboardList },
 ];
 
+/** Pasos del stepper del historial, en orden. */
+export const REPORT_STATUS_STEPS: { id: IncidentReport['status']; label: string }[] = [
+  { id: 'enviado', label: 'Enviado' },
+  { id: 'en_revision', label: 'En revisión' },
+  { id: 'cuadrilla_asignada', label: 'Cuadrilla asignada' },
+  { id: 'resuelto', label: 'Resuelto' },
+];
+
 export const reportCategoryLabel = (id: IncidentReport['category']) =>
   REPORT_CATEGORIES.find((c) => c.id === id)?.label ?? 'Reclamo';
 
