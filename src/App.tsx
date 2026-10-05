@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, lazy, Suspense } from 'react';
 import { m } from 'motion/react';
 import {
   CORRIENTES_ZONES,
@@ -16,7 +16,7 @@ import {
 } from './types';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
-import { MapScreen, resetMapHint } from './components/MapScreen';
+import { resetMapHint } from './lib/mapHint';
 import { HomeScreen } from './components/HomeScreen';
 import { SchedulesScreen } from './components/SchedulesScreen';
 import { ReportScreen } from './components/ReportScreen';
@@ -28,7 +28,10 @@ import { ShareModal } from './components/ShareModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { DesktopPanel } from './components/DesktopPanel';
 import { downloadReceipt, downloadSchedule } from './services/downloadService';
-import { APP_COLUMN } from './lib/layout';
+import { APP_COLUMN, MAP_SCREEN_HEIGHT } from './lib/layout';
+
+// Leaflet (≈43 kB gzip más su CSS) se carga recién al abrir el mapa: la app arranca en Inicio.
+const MapScreen = lazy(() => import('./components/MapScreen').then((mod) => ({ default: mod.MapScreen })));
 
 const DEFAULT_FILTERS: ZoneFilters = { category: 'todos', neighborhood: 'todos', shift: 'todos' };
 const matchesFilters = (z: ZoneLocation, f: ZoneFilters) =>
@@ -262,6 +265,7 @@ export default function App() {
           transition={{ duration: 0.15, ease: 'easeOut' }}
         >
           {activeTab === 'mapa' && (
+            <Suspense fallback={<div className={`${MAP_SCREEN_HEIGHT} bg-surface-muted`} />}>
             <MapScreen
               zones={filteredZones}
               selectedZone={selectedZone}
@@ -277,6 +281,7 @@ export default function App() {
               activeReminders={activeReminders}
               sheetRequest={mapSheetRequest}
             />
+            </Suspense>
           )}
   
           {activeTab === 'inicio' && (

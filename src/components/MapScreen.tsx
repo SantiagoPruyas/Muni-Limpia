@@ -23,6 +23,8 @@ import { AnimatePresence, m } from 'motion/react';
 import { ZoneLocation, FilterCategory } from '../types';
 import { categoryMeta } from '../lib/categoryMeta';
 import { CORRIENTES_ZONES } from '../data/corrientesData';
+import { MAP_SCREEN_HEIGHT } from '../lib/layout';
+import { dismissMapHint, isMapHintDismissed } from '../lib/mapHint';
 import { MapZoneSheet } from './MapZoneSheet';
 
 interface MapScreenProps {
@@ -150,13 +152,6 @@ const CATEGORY_PILLS: Array<{ id: string; category: FilterCategory }> = [
   { id: 'filter-poda', category: 'poda-escombros' },
 ];
 
-// La píldora de ayuda se oculta tras la primera interacción, también al volver a la pestaña.
-let mapHintDismissed = false;
-/** "Restablecer demo": la ayuda vuelve a aparecer como en el primer arranque. */
-export const resetMapHint = () => {
-  mapHintDismissed = false;
-};
-
 /** Sin tildes ni mayúsculas: "camba" encuentra "Cambá Cuá". */
 const foldText = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 
@@ -184,7 +179,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
   const [showAllLabels, setShowAllLabels] = useState(false);
-  const [showHint, setShowHint] = useState(!mapHintDismissed);
+  const [showHint, setShowHint] = useState(!isMapHintDismissed());
 
   // Cerrada por defecto para ver las calles sin obstrucción
   const [isSheetOpen, setIsSheetOpen] = useState(sheetRequest > 0);
@@ -214,7 +209,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const modalFilterCount = activeFilterCount - (activeCategory === 'todos' ? 0 : 1);
 
   const dismissHint = () => {
-    mapHintDismissed = true;
+    dismissMapHint();
     setShowHint(false);
   };
 
@@ -484,12 +479,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   );
 
   return (
-    // Alto: viewport menos header y bottom nav (64px cada uno, +1px del borde de la nav) y el
-    // safe area de la nav, así la atribución de Leaflet queda arriba de la nav.
-    <div
-      id="map-screen"
-      className="relative w-full h-[calc(100dvh-8rem-1px-env(safe-area-inset-bottom,0px))] overflow-hidden bg-surface-muted"
-    >
+    <div id="map-screen" className={`relative w-full ${MAP_SCREEN_HEIGHT} overflow-hidden bg-surface-muted`}>
       {/* Main Interactive Leaflet Map Container */}
       <div
         id="leaflet-map-container"
