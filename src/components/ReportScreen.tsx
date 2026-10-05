@@ -27,6 +27,8 @@ interface ReportScreenProps {
   onSubmitReport: (report: Omit<IncidentReport, 'id' | 'code' | 'createdAt' | 'status' | 'statusLabel'>) => IncidentReport;
   onExportReport: (report: IncidentReport) => void;
   profile: UserProfile;
+  /** Vista con la que abre la pantalla. */
+  initialView?: 'nuevo' | 'historial';
 }
 
 export const ReportScreen: React.FC<ReportScreenProps> = ({
@@ -34,8 +36,9 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({
   onSubmitReport,
   onExportReport,
   profile,
+  initialView = 'nuevo',
 }) => {
-  const [activeTab, setActiveTab] = useState<'nuevo' | 'historial'>('nuevo');
+  const [activeTab, setActiveTab] = useState<'nuevo' | 'historial'>(initialView);
 
   // Form State
   const [category, setCategory] = useState<IncidentReport['category']>('microbasural');
