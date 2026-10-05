@@ -46,6 +46,8 @@ interface MapScreenProps {
   onShare: (zone: ZoneLocation) => void;
   onToggleReminder: (zone: ZoneLocation) => void;
   activeReminders: string[];
+  /** Abre la hoja de `selectedZone` al montar (p.ej. al llegar desde Horarios o una notificación). */
+  sheetOpenOnMount?: boolean;
 }
 
 // Coordinates of Corrientes Collection Route (Calle Junín and Casco Histórico)
@@ -94,6 +96,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   onShare,
   onToggleReminder,
   activeReminders,
+  sheetOpenOnMount,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isListening, setIsListening] = useState(false);
@@ -105,7 +108,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   
   // Controls visibility of the bottom collection sheet modal
   // Default is false so streets are completely visible without obstruction
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [isSheetOpen, setIsSheetOpen] = useState(sheetOpenOnMount ?? false);
 
   // Map DOM and Leaflet References
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
