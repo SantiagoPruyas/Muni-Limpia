@@ -1,25 +1,28 @@
 import React, { useState } from 'react';
 import { X, SlidersHorizontal, Trash2, Recycle, Trees, Check } from 'lucide-react';
-import { FilterCategory } from '../types';
+import { FilterCategory, ZoneFilters } from '../types';
 import { NEIGHBORHOODS_CORRIENTES } from '../data/corrientesData';
 
 interface FilterModalProps {
   onClose: () => void;
-  onApplyFilters: (category: FilterCategory, neighborhood: string, shift: string) => void;
-  currentCategory: FilterCategory;
+  onApplyFilters: (filters: ZoneFilters) => void;
+  /** Filtro actual de App: el modal arranca preseleccionado con él. */
+  filters: ZoneFilters;
 }
+
+const SHIFT_OPTIONS: ZoneFilters['shift'][] = ['todos', 'Matutino', 'Vespertino', 'Nocturno'];
 
 export const FilterModal: React.FC<FilterModalProps> = ({
   onClose,
   onApplyFilters,
-  currentCategory,
+  filters,
 }) => {
-  const [category, setCategory] = useState<FilterCategory>(currentCategory);
-  const [selectedNeighborhood, setSelectedNeighborhood] = useState('todos');
-  const [selectedShift, setSelectedShift] = useState('todos');
+  const [category, setCategory] = useState<FilterCategory>(filters.category);
+  const [selectedNeighborhood, setSelectedNeighborhood] = useState(filters.neighborhood);
+  const [selectedShift, setSelectedShift] = useState<ZoneFilters['shift']>(filters.shift);
 
   const handleApply = () => {
-    onApplyFilters(category, selectedNeighborhood, selectedShift);
+    onApplyFilters({ category, neighborhood: selectedNeighborhood, shift: selectedShift });
     onClose();
   };
 
@@ -114,8 +117,8 @@ export const FilterModal: React.FC<FilterModalProps> = ({
             <label className="text-xs font-bold text-[#181c1e] uppercase tracking-wider">
               Turno de Recolección
             </label>
-            <div className="grid grid-cols-3 gap-2 text-xs font-semibold">
-              {['todos', 'Matutino', 'Nocturno'].map((s) => (
+            <div className="grid grid-cols-2 gap-2 text-xs font-semibold">
+              {SHIFT_OPTIONS.map((s) => (
                 <button
                   key={s}
                   type="button"

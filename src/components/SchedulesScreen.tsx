@@ -17,7 +17,12 @@ import {
 import { ZoneLocation, FilterCategory } from '../types';
 
 interface SchedulesScreenProps {
+  /** Ya filtradas por App (mismo filtro que el mapa). */
   zones: ZoneLocation[];
+  activeCategory: FilterCategory;
+  onSelectCategory: (category: FilterCategory) => void;
+  onClearFilters: () => void;
+  activeFilterCount: number;
   onSelectZone: (zone: ZoneLocation) => void;
   onOpenRouteDetails: (zone: ZoneLocation) => void;
   onToggleReminder: (zone: ZoneLocation) => void;
@@ -28,6 +33,9 @@ interface SchedulesScreenProps {
 
 export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
   zones,
+  activeCategory,
+  onSelectCategory,
+  onClearFilters,
   onSelectZone,
   onOpenRouteDetails,
   onToggleReminder,
@@ -35,34 +43,29 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
   onShare,
   activeReminders,
 }) => {
-  const [selectedCategory, setSelectedCategory] = useState<FilterCategory>('todos');
   const [searchFilter, setSearchFilter] = useState('');
-  const [selectedDay, setSelectedDay] = useState<string>('todos');
+  const [selectedDay, setSelectedDay] = useState<number | 'todos'>('todos');
 
-  const daysOfWeek = [
+  // id = índice de Date.getDay() (0 = domingo); la semana se muestra de lunes a domingo.
+  const daysOfWeek: { id: number | 'todos'; label: string }[] = [
     { id: 'todos', label: 'Toda la semana' },
-    { id: 'lun', label: 'Lunes' },
-    { id: 'mar', label: 'Martes' },
-    { id: 'mie', label: 'Miércoles' },
-    { id: 'jue', label: 'Jueves' },
-    { id: 'vie', label: 'Viernes' },
-    { id: 'sab', label: 'Sábado' },
+    { id: 1, label: 'Lunes' },
+    { id: 2, label: 'Martes' },
+    { id: 3, label: 'Miércoles' },
+    { id: 4, label: 'Jueves' },
+    { id: 5, label: 'Viernes' },
+    { id: 6, label: 'Sábado' },
+    { id: 0, label: 'Domingo' },
   ];
 
   const filteredZones = zones.filter((zone) => {
-    const matchesCategory =
-      selectedCategory === 'todos' || zone.category === selectedCategory;
     const matchesSearch =
       zone.name.toLowerCase().includes(searchFilter.toLowerCase()) ||
       zone.neighborhood.toLowerCase().includes(searchFilter.toLowerCase()) ||
       zone.address.toLowerCase().includes(searchFilter.toLowerCase());
-    const matchesDay =
-      selectedDay === 'todos' ||
-      zone.frequency.toLowerCase().includes(selectedDay.toLowerCase()) ||
-      zone.frequency.toLowerCase().includes('lunes a sábados') ||
-      zone.frequency.toLowerCase().includes('todos los días');
+    const matchesDay = selectedDay === 'todos' || zone.days.includes(selectedDay);
 
-    return matchesCategory && matchesSearch && matchesDay;
+    return matchesSearch && matchesDay;
   });
 
   return (
@@ -92,9 +95,9 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
       {/* Category Pills */}
       <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none -mx-4 px-4">
         <button
-          onClick={() => setSelectedCategory('todos')}
+          onClick={() => onSelectCategory('todos')}
           className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
-            selectedCategory === 'todos'
+            activeCategory ==='todos'
               ? 'bg-[#006b21] text-white shadow-sm'
               : 'bg-white text-[#3e4a3c] border border-[#e2e8f0]'
           }`}
@@ -102,9 +105,9 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
           Todos los servicios
         </button>
         <button
-          onClick={() => setSelectedCategory('residuos-comunes')}
+          onClick={() => onSelectCategory('residuos-comunes')}
           className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-            selectedCategory === 'residuos-comunes'
+            activeCategory ==='residuos-comunes'
               ? 'bg-[#006b21] text-white shadow-sm'
               : 'bg-white text-[#3e4a3c] border border-[#e2e8f0]'
           }`}
@@ -113,9 +116,9 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
           Residuos Comunes
         </button>
         <button
-          onClick={() => setSelectedCategory('reciclables')}
+          onClick={() => onSelectCategory('reciclables')}
           className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-            selectedCategory === 'reciclables'
+            activeCategory ==='reciclables'
               ? 'bg-[#006b21] text-white shadow-sm'
               : 'bg-white text-[#3e4a3c] border border-[#e2e8f0]'
           }`}
@@ -124,9 +127,9 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
           Reciclables
         </button>
         <button
-          onClick={() => setSelectedCategory('poda-escombros')}
+          onClick={() => onSelectCategory('poda-escombros')}
           className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-            selectedCategory === 'poda-escombros'
+            activeCategory ==='poda-escombros'
               ? 'bg-[#006b21] text-white shadow-sm'
               : 'bg-white text-[#3e4a3c] border border-[#e2e8f0]'
           }`}
@@ -159,17 +162,18 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
           <div className="bg-white rounded-2xl p-8 border border-[#e2e8f0] text-center flex flex-col items-center justify-center gap-2">
             <Calendar className="w-10 h-10 text-[#555f71]/40" />
             <span className="font-bold text-sm text-[#181c1e]">
-              No se encontraron cronogramas para los filtros seleccionados
+              Sin resultados
             </span>
             <button
+              id="schedules-empty-clear-filters"
               onClick={() => {
-                setSelectedCategory('todos');
+                onClearFilters();
                 setSelectedDay('todos');
                 setSearchFilter('');
               }}
               className="mt-2 text-xs text-[#006b21] font-bold underline"
             >
-              Restablecer filtros
+              Limpiar filtros
             </button>
           </div>
         ) : (
@@ -282,7 +286,7 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
                   {/* Google Drive Export button */}
                   <button
                     onClick={() => onExportSchedule(zone)}
-                    title="Exportar a Google Drive"
+                    title="Descargar horario"
                     className="h-10 w-10 bg-[#f1f4f6] hover:bg-[#e5e9eb] text-[#181c1e] rounded-xl flex items-center justify-center transition-colors"
                   >
                     <DownloadCloud className="w-4 h-4 text-[#006b21]" />

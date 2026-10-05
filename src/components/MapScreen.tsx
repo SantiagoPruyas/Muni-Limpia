@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
@@ -27,11 +27,18 @@ import {
   EyeOff
 } from 'lucide-react';
 import { ZoneLocation, FilterCategory } from '../types';
+import { CORRIENTES_ZONES } from '../data/corrientesData';
+import { nextService } from '../data/schedule';
 
 interface MapScreenProps {
+  /** Ya filtradas por App (filtro único). */
   zones: ZoneLocation[];
   selectedZone: ZoneLocation | null;
-  onSelectZone: (zone: ZoneLocation | null) => void;
+  onSelectZone: (zone: ZoneLocation) => void;
+  activeCategory: FilterCategory;
+  onSelectCategory: (category: FilterCategory) => void;
+  onClearFilters: () => void;
+  activeFilterCount: number;
   onOpenRouteDetails: (zone: ZoneLocation) => void;
   onOpenFilter: () => void;
   onShare: (zone: ZoneLocation) => void;
@@ -70,6 +77,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   zones,
   selectedZone,
   onSelectZone,
+  activeCategory,
+  onSelectCategory,
+  onClearFilters,
   onOpenRouteDetails,
   onOpenFilter,
   onShare,
@@ -77,7 +87,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   activeReminders,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<FilterCategory>('todos');
   const [isListening, setIsListening] = useState(false);
   const [showLiveTruck, setShowLiveTruck] = useState(true);
   const [mapLayerType, setMapLayerType] = useState<'streets' | 'satellite'>('streets');
@@ -97,14 +106,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const routePolylineRef = useRef<L.Polyline | null>(null);
   const truckMarkerRef = useRef<L.Marker | null>(null);
 
-  // Filtered zones
-  const filteredZones = useMemo(
-    () => zones.filter((zone) => activeFilter === 'todos' || zone.category === activeFilter),
-    [zones, activeFilter]
-  );
-
   const currentActiveZone = selectedZone || zones[0];
   const isReminderActive = currentActiveZone ? activeReminders.includes(currentActiveZone.id) : false;
+  // La hoja solo se muestra si la zona seleccionada pasa el filtro actual.
+  const showSheet = isSheetOpen && !!currentActiveZone && zones.some((z) => z.id === currentActiveZone.id);
 
   // Initialize Leaflet Map
   useEffect(() => {
@@ -179,7 +184,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
     markersLayerGroupRef.current.clearLayers();
 
-    filteredZones.forEach((zone) => {
+    zones.forEach((zone) => {
       const isSelected = selectedZone?.id === zone.id;
       const isRecycle = zone.category === 'reciclables' || zone.category === 'puntos-verdes';
       const isPoda = zone.category === 'poda-escombros';
@@ -234,7 +239,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
       markersLayerGroupRef.current?.addLayer(marker);
     });
-  }, [filteredZones, selectedZone, isSheetOpen]);
+  }, [zones, selectedZone, isSheetOpen]);
 
   // Center map when selected zone changes externally
   useEffect(() => {
@@ -319,7 +324,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     setTimeout(() => {
       setIsListening(false);
       setSearchQuery('Calle Junín 1200, Corrientes');
-      const found = zones.find((z) => z.id === 'junin-1200') || zones[0];
+      // Busca en todas las zonas: si el filtro la oculta, App lo limpia al seleccionarla.
+      const found = CORRIENTES_ZONES.find((z) => z.id === 'junin-1200');
       if (found) {
         onSelectZone(found);
         setIsSheetOpen(true);
@@ -467,9 +473,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
         <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none -mx-4 px-4">
           <button
             id="filter-todos"
-            onClick={() => setActiveFilter('todos')}
+            onClick={() => onSelectCategory('todos')}
             className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap shadow-sm flex items-center gap-1.5 transition-all ${
-              activeFilter === 'todos'
+              activeCategory ==='todos'
                 ? 'bg-[#006b21] text-white'
                 : 'bg-white/95 backdrop-blur text-[#3e4a3c] border border-[#e2e8f0] hover:bg-[#f1f4f6]'
             }`}
@@ -479,9 +485,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
           <button
             id="filter-residuos-comunes"
-            onClick={() => setActiveFilter('residuos-comunes')}
+            onClick={() => onSelectCategory('residuos-comunes')}
             className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap shadow-sm flex items-center gap-1.5 transition-all ${
-              activeFilter === 'residuos-comunes'
+              activeCategory ==='residuos-comunes'
                 ? 'bg-[#006b21] text-white'
                 : 'bg-white/95 backdrop-blur text-[#3e4a3c] border border-[#e2e8f0] hover:bg-[#f1f4f6]'
             }`}
@@ -492,9 +498,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
           <button
             id="filter-reciclables"
-            onClick={() => setActiveFilter('reciclables')}
+            onClick={() => onSelectCategory('reciclables')}
             className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap shadow-sm flex items-center gap-1.5 transition-all ${
-              activeFilter === 'reciclables'
+              activeCategory ==='reciclables'
                 ? 'bg-[#006b21] text-white'
                 : 'bg-white/95 backdrop-blur text-[#3e4a3c] border border-[#e2e8f0] hover:bg-[#f1f4f6]'
             }`}
@@ -505,9 +511,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
           <button
             id="filter-poda"
-            onClick={() => setActiveFilter('poda-escombros')}
+            onClick={() => onSelectCategory('poda-escombros')}
             className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap shadow-sm flex items-center gap-1.5 transition-all ${
-              activeFilter === 'poda-escombros'
+              activeCategory ==='poda-escombros'
                 ? 'bg-[#006b21] text-white'
                 : 'bg-white/95 backdrop-blur text-[#3e4a3c] border border-[#e2e8f0] hover:bg-[#f1f4f6]'
             }`}
@@ -586,7 +592,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       {/* If sheet is open, they float above the sheet; if sheet is closed, they rest cleanly at the bottom */}
       <div
         className={`absolute right-3.5 z-20 flex flex-col gap-2 pointer-events-auto transition-all duration-300 ${
-          isSheetOpen ? 'bottom-[275px] sm:bottom-[285px]' : 'bottom-20'
+          showSheet ? 'bottom-[275px] sm:bottom-[285px]' : 'bottom-20'
         }`}
       >
         {/* GPS My Location */}
@@ -622,25 +628,34 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       </div>
 
       {/* Floating Bottom Bar when no card is open: allows exploring streets freely without obstruction */}
-      {!isSheetOpen && (
+      {!showSheet && (
         <div className="absolute bottom-20 inset-x-4 max-w-sm mx-auto z-20 pointer-events-auto flex items-center justify-center animate-fadeIn">
           <button
+            id={zones.length === 0 ? 'map-empty-clear-filters' : undefined}
             onClick={() => {
-              if (currentActiveZone) {
+              if (zones.length === 0) {
+                onClearFilters();
+              } else if (currentActiveZone) {
                 setIsSheetOpen(true);
               }
             }}
             className="bg-white/95 backdrop-blur-md shadow-lg border border-[#e2e8f0] px-4 py-2 rounded-full flex items-center gap-2 text-xs font-bold text-[#181c1e] hover:bg-white active:scale-98 transition-all"
           >
-            <span className="w-2 h-2 rounded-full bg-[#006b21] animate-pulse"></span>
-            <span>Toca un punto o busca una calle para ver horarios</span>
-            <ChevronUp className="w-4 h-4 text-[#555f71]" />
+            {zones.length === 0 ? (
+              <span>Sin resultados · Limpiar filtros</span>
+            ) : (
+              <>
+                <span className="w-2 h-2 rounded-full bg-[#006b21] animate-pulse"></span>
+                <span>Toca un punto o busca una calle para ver horarios</span>
+                <ChevronUp className="w-4 h-4 text-[#555f71]" />
+              </>
+            )}
           </button>
         </div>
       )}
 
       {/* Bottom Sheet Card: Only rendered when a point is clicked or opened */}
-      {isSheetOpen && currentActiveZone && (
+      {showSheet && (
         <div className="absolute bottom-2 inset-x-4 max-w-md mx-auto z-30 pb-16 pointer-events-auto animate-slideUp">
           {currentActiveZone.id === 'junin-1200' ? (
             /* SCREENSHOT 1: Calle Junín 1200 Card */
@@ -664,7 +679,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 title="Cerrar panel"
               ></div>
 
-              {/* Status Header with "FALTAN 2h 45m" Badge */}
+              {/* Status Header with nextService badge */}
               <div className="flex items-start justify-between pr-8">
                 <div className="flex flex-col">
                   <div className="flex items-center gap-1.5">
@@ -683,11 +698,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
                 {/* Green Remaining Time Box */}
                 <div className="bg-[#006b21] text-white px-2.5 py-1.5 rounded-2xl shadow flex flex-col items-center justify-center leading-none min-w-[64px]">
-                  <span className="text-[9px] tracking-wider font-extrabold opacity-80 mb-0.5">
-                    FALTAN
-                  </span>
-                  <span className="text-base font-black">2h</span>
-                  <span className="text-xs font-bold">45m</span>
+                  <span className="text-xs font-bold">{nextService(currentActiveZone).label}</span>
                 </div>
               </div>
 

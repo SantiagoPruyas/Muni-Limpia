@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   CORRIENTES_ZONES,
   INITIAL_REPORTS,
@@ -11,6 +11,7 @@ import {
   NotificationItem,
   UserProfile,
   FilterCategory,
+  ZoneFilters,
 } from './types';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
@@ -24,34 +25,54 @@ import { ProfileModal } from './components/ProfileModal';
 import { FilterModal } from './components/FilterModal';
 import { ShareModal } from './components/ShareModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
-import {
-  exportScheduleToGoogleDrive,
-  exportReportToGoogleDrive,
-} from './services/driveService';
+import { downloadReceipt, downloadSchedule } from './services/downloadService';
+
+const DEFAULT_FILTERS: ZoneFilters = { category: 'todos', neighborhood: 'todos', shift: 'todos' };
+const MAX_TOASTS = 2;
+const TOAST_MS = 4500;
 
 export default function App() {
-  // Navigation State - defaults to 'mapa' to display screenshot immediately
-  const [activeTab, setActiveTab] = useState<NavTab>('mapa');
+  const [activeTab, setActiveTab] = useState<NavTab>('inicio');
 
-  // Zones & Active Selection State
-  const [zones, setZones] = useState<ZoneLocation[]>(CORRIENTES_ZONES);
+  // Filtro único de zonas: lo leen las píldoras del mapa, FilterModal y Horarios.
+  // Un resultado vacío queda vacío (las pantallas muestran "Limpiar filtros").
+  const [filters, setFilters] = useState<ZoneFilters>(DEFAULT_FILTERS);
+  const filteredZones = useMemo(
+    () =>
+      CORRIENTES_ZONES.filter(
+        (z) =>
+          (filters.category === 'todos' || z.category === filters.category) &&
+          (filters.neighborhood === 'todos' || z.neighborhood === filters.neighborhood) &&
+          (filters.shift === 'todos' || z.shift === filters.shift)
+      ),
+    [filters]
+  );
+  const activeFilterCount = Object.values(filters).filter((v) => v !== 'todos').length;
+  const setCategory = (category: FilterCategory) => setFilters((prev) => ({ ...prev, category }));
+  const clearFilters = () => setFilters(DEFAULT_FILTERS);
+
   const [selectedZone, setSelectedZone] = useState<ZoneLocation>(CORRIENTES_ZONES[0]); // Junin 1200
   const [activeReminders, setActiveReminders] = useState<string[]>(['junin-1200']);
+
+  // Seleccionar una zona que el filtro oculta (voz, notificaciones) limpia el filtro.
+  const selectZone = (zone: ZoneLocation) => {
+    setSelectedZone(zone);
+    if (!filteredZones.some((z) => z.id === zone.id)) clearFilters();
+  };
 
   // Citizen Reports & Notifications State
   const [reports, setReports] = useState<IncidentReport[]>(INITIAL_REPORTS);
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+  const reportSeq = useRef(Math.max(...INITIAL_REPORTS.map((r) => Number(r.code.split('-')[2]))));
 
-  // User Profile
+  // Perfil demo ficticio (D5)
   const [profile, setProfile] = useState<UserProfile>({
-    name: 'Santiago Pruyas',
-    email: 'santi.pruyas@gmail.com',
+    name: 'Vecina/o Demo',
+    email: 'vecino.demo@example.com',
     neighborhood: 'Barrio Centro',
     address: 'Calle Junín 1200, Corrientes',
     notificationsEnabled: true,
     soundEnabled: true,
-    driveSyncEnabled: true,
-    googleAccountConnected: true,
   });
 
   // Modals visibility state
@@ -63,18 +84,23 @@ export default function App() {
 
   // Toasts
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
-
-  const addToast = (toast: Omit<ToastMessage, 'id'>) => {
-    const id = `toast_${Date.now()}`;
-    const newToast = { ...toast, id };
-    setToasts((prev) => [newToast, ...prev.slice(0, 3)]);
-    setTimeout(() => {
-      dismissToast(id);
-    }, 4500);
-  };
+  const toastSeq = useRef(0);
 
   const dismissToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  // Máximo MAX_TOASTS visibles; los 'loading' esperan a updateToast para cerrarse.
+  const addToast = (toast: Omit<ToastMessage, 'id'>) => {
+    const id = `toast-${++toastSeq.current}`;
+    setToasts((prev) => [{ ...toast, id }, ...prev].slice(0, MAX_TOASTS));
+    if (toast.type !== 'loading') setTimeout(() => dismissToast(id), TOAST_MS);
+    return id;
+  };
+
+  const updateToast = (id: string, toast: Omit<ToastMessage, 'id'>) => {
+    setToasts((prev) => prev.map((t) => (t.id === id ? { ...toast, id } : t)));
+    setTimeout(() => dismissToast(id), TOAST_MS);
   };
 
   // Toggle Reminder / Avisarme
@@ -84,97 +110,60 @@ export default function App() {
       setActiveReminders((prev) => prev.filter((id) => id !== zone.id));
       addToast({
         type: 'info',
-        title: 'Recordatorio Desactivado',
-        message: `Ya no recibirás alertas de paso para "${zone.name}".`,
+        title: 'Recordatorio desactivado',
+        message: `Ya no vas a recibir avisos de ${zone.name}.`,
       });
     } else {
       setActiveReminders((prev) => [...prev, zone.id]);
       addToast({
         type: 'success',
-        title: '¡Alarma de Recolección Activada!',
-        message: `Te notificaremos 30 minutos antes de la ventana horaria (${zone.timeWindow}) en ${zone.name}.`,
+        title: 'Recordatorio activado',
+        message: `Te avisamos 30 minutos antes del horario (${zone.timeWindow}) en ${zone.name}.`,
       });
     }
   };
 
-  // Google Drive export for Schedule
-  const handleExportSchedule = async (zone: ZoneLocation) => {
-    addToast({
-      type: 'info',
-      title: 'Sincronizando con Google Drive...',
-      message: `Guardando cronograma de ${zone.name} en tu nube.`,
-    });
-
-    try {
-      const result = await exportScheduleToGoogleDrive(zone);
-      addToast({
-        type: 'drive',
-        title: '¡Guardado en Google Drive!',
-        message: `Archivo "${result.fileName}" guardado con éxito.`,
-        linkUrl: result.fileUrl,
-        linkLabel: 'Ver en Google Drive',
-      });
-    } catch (err) {
-      addToast({
-        type: 'error',
-        title: 'Error de sincronización',
-        message: 'No se pudo completar el backup en Drive.',
-      });
-    }
+  // Descargas (D2): el toast "Generando…" se transforma en el resultado.
+  const runDownload = (loadingTitle: string, doneTitle: string, download: () => string) => {
+    const id = addToast({ type: 'loading', title: loadingTitle });
+    setTimeout(() => {
+      try {
+        updateToast(id, { type: 'success', title: doneTitle, message: download() });
+      } catch {
+        updateToast(id, { type: 'error', title: 'No se pudo descargar', message: 'Probá de nuevo en unos segundos.' });
+      }
+    }, 400);
   };
 
-  // Google Drive export for Incident Report
-  const handleExportReport = async (report: IncidentReport) => {
-    addToast({
-      type: 'info',
-      title: 'Generando comprobante en Drive...',
-      message: `Respaldando ticket #${report.code}.`,
-    });
+  const handleDownloadSchedule = (zone: ZoneLocation) =>
+    runDownload('Generando horario…', 'Horario descargado', () => downloadSchedule(zone));
 
-    try {
-      const result = await exportReportToGoogleDrive(report);
-      setReports((prev) =>
-        prev.map((r) => (r.id === report.id ? { ...r, syncedToDrive: true } : r))
-      );
-      addToast({
-        type: 'drive',
-        title: '¡Comprobante en Google Drive!',
-        message: result.message,
-        linkUrl: result.fileUrl,
-        linkLabel: 'Abrir ticket en Drive',
-      });
-    } catch (err) {
-      addToast({
-        type: 'error',
-        title: 'Error de sincronización',
-        message: 'No se pudo guardar el comprobante.',
-      });
-    }
-  };
+  const handleDownloadReceipt = (report: IncidentReport) =>
+    runDownload('Generando comprobante…', 'Comprobante descargado', () => downloadReceipt(report));
 
-  // Create new Incident Report
-  const handleSubmitReport = async (
+  // El código del reclamo se genera solo acá y se devuelve a quien envía.
+  const handleSubmitReport = (
     newReportData: Omit<IncidentReport, 'id' | 'code' | 'createdAt' | 'status' | 'statusLabel'>
-  ) => {
-    const randomNum = Math.floor(1000 + Math.random() * 9000);
+  ): IncidentReport => {
+    reportSeq.current += 1;
+    const code = `ML-${new Date().getFullYear()}-${String(reportSeq.current).padStart(4, '0')}`;
     const newReport: IncidentReport = {
       ...newReportData,
-      id: `rep-${Date.now()}`,
-      code: `CR-${randomNum}`,
-      createdAt: 'Recién',
+      id: `rep-${reportSeq.current}`,
+      code,
+      createdAt: new Date().toISOString(),
       status: 'enviado',
-      statusLabel: 'Enviado a Higiene Urbana',
+      statusLabel: 'Enviado',
       estimatedResolution: 'Evaluación técnica en curso',
     };
 
     setReports((prev) => [newReport, ...prev]);
 
-    // Also add to notifications
     setNotifications((prev) => [
       {
-        id: `notif-${Date.now()}`,
-        title: `Reclamo #${newReport.code} registrado`,
-        message: `Hemos recibido tu reporte de ${newReport.categoryLabel} en ${newReport.address}.`,
+        id: `notif-${code}`,
+        title: `Reclamo #${code} registrado`,
+        message: `${newReport.categoryLabel} en ${newReport.address}. Te avisamos cuando cambie el estado.`,
         time: 'Ahora',
         read: false,
         type: 'report_update',
@@ -184,29 +173,11 @@ export default function App() {
 
     addToast({
       type: 'success',
-      title: '¡Reclamo Registrado Exitosamente!',
-      message: `Número de ticket asignado: #${newReport.code}. Se iniciará la revisión vecinal.`,
+      title: 'Reclamo registrado',
+      message: `Tu número de reclamo es #${code}.`,
     });
 
-    // If drive sync is enabled
-    if (newReportData.syncedToDrive) {
-      await handleExportReport(newReport);
-    }
-  };
-
-  // Filter apply from filter modal
-  const handleApplyFilters = (category: FilterCategory, neighborhood: string, _shift: string) => {
-    let filtered = CORRIENTES_ZONES;
-    if (category !== 'todos') {
-      filtered = filtered.filter((z) => z.category === category);
-    }
-    if (neighborhood !== 'todos') {
-      filtered = filtered.filter((z) => z.neighborhood === neighborhood);
-    }
-    setZones(filtered.length > 0 ? filtered : CORRIENTES_ZONES);
-    if (filtered.length > 0) {
-      setSelectedZone(filtered[0]);
-    }
+    return newReport;
   };
 
   // Mark all notifications as read
@@ -233,9 +204,13 @@ export default function App() {
       <main className="flex-1 w-full pt-16 flex flex-col">
         {activeTab === 'mapa' && (
           <MapScreen
-            zones={zones}
+            zones={filteredZones}
             selectedZone={selectedZone}
-            onSelectZone={(zone) => setSelectedZone(zone)}
+            onSelectZone={selectZone}
+            activeCategory={filters.category}
+            onSelectCategory={setCategory}
+            onClearFilters={clearFilters}
+            activeFilterCount={activeFilterCount}
             onOpenRouteDetails={(zone) => setModalRouteZone(zone)}
             onOpenFilter={() => setShowFilterModal(true)}
             onShare={(zone) => setShareZone(zone)}
@@ -250,9 +225,9 @@ export default function App() {
             reports={reports}
             profile={profile}
             onNavigate={(tab) => setActiveTab(tab)}
-            onSelectZone={(zone) => setSelectedZone(zone)}
+            onSelectZone={selectZone}
             onToggleReminder={handleToggleReminder}
-            onExportSchedule={handleExportSchedule}
+            onExportSchedule={handleDownloadSchedule}
             isReminderActive={activeReminders.includes(selectedZone.id)}
             onOpenReportModal={() => setActiveTab('reportar')}
           />
@@ -260,14 +235,18 @@ export default function App() {
 
         {activeTab === 'horarios' && (
           <SchedulesScreen
-            zones={zones}
+            zones={filteredZones}
+            activeCategory={filters.category}
+            onSelectCategory={setCategory}
+            onClearFilters={clearFilters}
+            activeFilterCount={activeFilterCount}
             onSelectZone={(zone) => {
-              setSelectedZone(zone);
+              selectZone(zone);
               setActiveTab('mapa');
             }}
             onOpenRouteDetails={(zone) => setModalRouteZone(zone)}
             onToggleReminder={handleToggleReminder}
-            onExportSchedule={handleExportSchedule}
+            onExportSchedule={handleDownloadSchedule}
             onShare={(zone) => setShareZone(zone)}
             activeReminders={activeReminders}
           />
@@ -277,7 +256,7 @@ export default function App() {
           <ReportScreen
             reports={reports}
             onSubmitReport={handleSubmitReport}
-            onExportReport={handleExportReport}
+            onExportReport={handleDownloadReceipt}
             profile={profile}
           />
         )}
@@ -294,7 +273,7 @@ export default function App() {
       <RouteDetailsModal
         zone={modalRouteZone}
         onClose={() => setModalRouteZone(null)}
-        onExportSchedule={handleExportSchedule}
+        onExportSchedule={handleDownloadSchedule}
       />
 
       {showNotificationsModal && (
@@ -304,9 +283,9 @@ export default function App() {
           onMarkAllRead={handleMarkAllNotificationsRead}
           onClearAll={() => setNotifications([])}
           onSelectZoneById={(zoneId) => {
-            const found = zones.find((z) => z.id === zoneId);
+            const found = CORRIENTES_ZONES.find((z) => z.id === zoneId);
             if (found) {
-              setSelectedZone(found);
+              selectZone(found);
               setActiveTab('mapa');
             }
           }}
@@ -321,8 +300,8 @@ export default function App() {
             setProfile(newProf);
             addToast({
               type: 'success',
-              title: 'Perfil Actualizado',
-              message: 'Tus datos y barrio principal fueron guardados.',
+              title: 'Perfil actualizado',
+              message: 'Guardamos tus datos.',
             });
           }}
         />
@@ -330,9 +309,9 @@ export default function App() {
 
       {showFilterModal && (
         <FilterModal
-          currentCategory={selectedZone.category}
+          filters={filters}
           onClose={() => setShowFilterModal(false)}
-          onApplyFilters={handleApplyFilters}
+          onApplyFilters={setFilters}
         />
       )}
 

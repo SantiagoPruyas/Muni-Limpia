@@ -1,13 +1,12 @@
 import React from 'react';
-import { CheckCircle2, AlertCircle, Info, DownloadCloud, X } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Info, Loader2, X } from 'lucide-react';
 
 export interface ToastMessage {
   id: string;
-  type: 'success' | 'info' | 'error' | 'drive';
+  /** 'loading' no se cierra solo: se transforma con updateToast. */
+  type: 'success' | 'info' | 'error' | 'loading';
   title: string;
   message?: string;
-  linkUrl?: string;
-  linkLabel?: string;
 }
 
 interface ToastProps {
@@ -29,8 +28,8 @@ export const ToastContainer: React.FC<ToastProps> = ({ toasts, onDismiss }) => {
             {t.type === 'success' && (
               <CheckCircle2 className="w-5 h-5 text-[#059669]" />
             )}
-            {t.type === 'drive' && (
-              <DownloadCloud className="w-5 h-5 text-[#006b21]" />
+            {t.type === 'loading' && (
+              <Loader2 className="w-5 h-5 text-[#2563EB] animate-spin" />
             )}
             {t.type === 'info' && (
               <Info className="w-5 h-5 text-[#2563EB]" />
@@ -46,16 +45,6 @@ export const ToastContainer: React.FC<ToastProps> = ({ toasts, onDismiss }) => {
               <span className="text-[11px] text-[#555f71] mt-0.5 leading-snug">
                 {t.message}
               </span>
-            )}
-            {t.linkUrl && (
-              <a
-                href={t.linkUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-[11px] font-bold text-[#006b21] hover:underline mt-1 inline-flex items-center gap-1"
-              >
-                {t.linkLabel || 'Abrir en Google Drive'}
-              </a>
             )}
           </div>
 

@@ -10,18 +10,31 @@ export interface RouteStop {
   isCurrent?: boolean;
 }
 
+export type ZoneShift = 'Matutino' | 'Vespertino' | 'Nocturno';
+
+export interface ZoneFilters {
+  category: FilterCategory;
+  neighborhood: string;
+  shift: ZoneShift | 'todos';
+}
+
 export interface ZoneLocation {
   id: string;
   name: string;
   subtitle: string;
   type: 'Residuos Comunes' | 'Reciclables' | 'Poda y Escombros' | 'Punto Verde';
   status: 'EN CAMINO' | 'EN CURSO' | 'PROGRAMADO' | 'FINALIZADO';
-  remainingTime?: string;
   address: string;
   neighborhood: string;
+  /** Días de servicio (0 = domingo). */
+  days: number[];
+  /** Inicio y fin de la ventana, "HH:MM". Si end < start, la ventana cruza la medianoche. */
+  start: string;
+  end: string;
+  /** Solo para mostrar: deben coincidir con days / start / end. */
   frequency: string;
   timeWindow: string;
-  shift: 'Matutino' | 'Vespertino' | 'Nocturno';
+  shift: ZoneShift;
   truckNumber?: string;
   truckDriver?: string;
   truckCapacity?: string;
@@ -45,9 +58,9 @@ export interface IncidentReport {
   photoUrl?: string;
   status: 'enviado' | 'en_revision' | 'cuadrilla_asignada' | 'resuelto';
   statusLabel: string;
+  /** Fecha ISO. Se formatea al mostrar con formatReportDate. */
   createdAt: string;
   estimatedResolution?: string;
-  syncedToDrive?: boolean;
 }
 
 export interface NotificationItem {
@@ -67,6 +80,4 @@ export interface UserProfile {
   address: string;
   notificationsEnabled: boolean;
   soundEnabled: boolean;
-  driveSyncEnabled: boolean;
-  googleAccountConnected: boolean;
 }

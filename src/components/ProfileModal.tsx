@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, User, MapPin, Bell, Cloud, Save, CheckCircle2, Shield, Heart } from 'lucide-react';
+import { X, User, MapPin, Bell, Save, Shield, Heart } from 'lucide-react';
 import { CORRIENTES_NEIGHBORHOODS } from '../data/corrientesData';
 import { UserProfile } from '../types';
 
@@ -16,7 +16,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 }) => {
   const [addressInput, setAddressInput] = useState(profile.address);
   const [notifSound, setNotifSound] = useState(true);
-  const [driveAutoSync, setDriveAutoSync] = useState(true);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,29 +70,6 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             <span className="text-[10px] text-[#555f71]">
               Utilizado para calcular las alertas de paso de camión y horarios de recolección en tu cuadra.
             </span>
-          </div>
-
-          {/* Google Drive Status */}
-          <div className="bg-[#f1f4f6] rounded-2xl p-3.5 border border-[#e2e8f0] flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-[#006b21]/10 text-[#006b21] flex items-center justify-center">
-                <Cloud className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-[#181c1e]">Google Drive Conectado</div>
-                <div className="text-[10px] text-[#059669] font-semibold flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" />
-                  <span>Sincronización activa</span>
-                </div>
-              </div>
-            </div>
-
-            <input
-              type="checkbox"
-              checked={driveAutoSync}
-              onChange={(e) => setDriveAutoSync(e.target.checked)}
-              className="w-4 h-4 text-[#006b21] rounded accent-[#006b21]"
-            />
           </div>
 
           {/* Notification toggles */}

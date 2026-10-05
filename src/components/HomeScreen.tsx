@@ -15,6 +15,7 @@ import {
   DownloadCloud
 } from 'lucide-react';
 import { ZoneLocation, IncidentReport, UserProfile, NavTab } from '../types';
+import { nextService } from '../data/schedule';
 
 interface HomeScreenProps {
   currentZone: ZoneLocation;
@@ -38,6 +39,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   isReminderActive,
 }) => {
   const activeReports = reports.filter((r) => r.status !== 'resuelto');
+  const service = nextService(currentZone);
 
   return (
     <div id="home-screen" className="flex-1 w-full max-w-2xl mx-auto px-4 pt-4 pb-24 flex flex-col gap-5">
@@ -82,8 +84,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
             {/* Countdown Pill */}
             <div className="bg-white text-[#006b21] px-3.5 py-2 rounded-2xl shadow-lg flex flex-col items-center justify-center font-black">
-              <span className="text-[9px] uppercase tracking-wider text-[#555f71]">Faltan</span>
-              <span className="text-xl sm:text-2xl leading-none font-extrabold">{currentZone.remainingTime || '2h 45m'}</span>
+              <span className="text-[9px] uppercase tracking-wider text-[#555f71]">
+                {service.state === 'en-curso' ? 'Ahora' : 'Próxima'}
+              </span>
+              <span className="text-xl sm:text-2xl leading-none font-extrabold">{service.label}</span>
             </div>
           </div>
 
@@ -126,11 +130,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             <button
               id="btn-home-export-drive"
               onClick={() => onExportSchedule(currentZone)}
-              title="Guardar horario en Google Drive"
+              title="Descargar horario"
               className="h-11 px-3.5 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 backdrop-blur-md transition-colors"
             >
               <DownloadCloud className="w-4 h-4" />
-              <span className="hidden sm:inline">Guardar en Drive</span>
+              <span className="hidden sm:inline">Descargar horario</span>
             </button>
           </div>
         </div>

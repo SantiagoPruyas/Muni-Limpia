@@ -18,11 +18,13 @@ import {
 } from 'lucide-react';
 import { IncidentReport, UserProfile } from '../types';
 import { NEIGHBORHOODS_CORRIENTES } from '../data/corrientesData';
+import { REPORT_CATEGORIES, formatReportDate } from '../data/reports';
 import confetti from 'canvas-confetti';
 
 interface ReportScreenProps {
   reports: IncidentReport[];
-  onSubmitReport: (report: Omit<IncidentReport, 'id' | 'code' | 'createdAt' | 'status' | 'statusLabel'>) => void;
+  /** Devuelve el reclamo creado, con el código asignado por App. */
+  onSubmitReport: (report: Omit<IncidentReport, 'id' | 'code' | 'createdAt' | 'status' | 'statusLabel'>) => IncidentReport;
   onExportReport: (report: IncidentReport) => void;
   profile: UserProfile;
 }
@@ -44,55 +46,9 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [isCapturingCamera, setIsCapturingCamera] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [saveToDrive, setSaveToDrive] = useState(true);
   const [justSubmittedCode, setJustSubmittedCode] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const categories = [
-    {
-      id: 'microbasural',
-      label: 'Microbasural',
-      desc: 'Acumulación de basura en esquinas o terrenos',
-      icon: '🗑️',
-      color: 'bg-red-50 text-red-700 border-red-200',
-    },
-    {
-      id: 'contenedor_lleno',
-      label: 'Contenedor Colmado / Roto',
-      desc: 'Contenedor sin capacidad o con daños',
-      icon: '📦',
-      color: 'bg-amber-50 text-amber-700 border-amber-200',
-    },
-    {
-      id: 'poda_escombros',
-      label: 'Poda y Escombros',
-      desc: 'Ramas voluminosas u obras sin retiro',
-      icon: '🌿',
-      color: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    },
-    {
-      id: 'animal_muerto',
-      label: 'Animal en Vía Pública',
-      desc: 'Retiro urgente bromatológico',
-      icon: '⚠️',
-      color: 'bg-rose-50 text-rose-700 border-rose-200',
-    },
-    {
-      id: 'falta_recoleccion',
-      label: 'Falta de Recolección',
-      desc: 'El camión no pasó en su horario habitual',
-      icon: '🚛',
-      color: 'bg-blue-50 text-blue-700 border-blue-200',
-    },
-    {
-      id: 'otro',
-      label: 'Otro Reclamo',
-      desc: 'Cuestiones generales de higiene urbana',
-      icon: '📋',
-      color: 'bg-purple-50 text-purple-700 border-purple-200',
-    },
-  ];
 
   // Handle local image file upload
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -128,22 +84,20 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({
     if (!title.trim() || !address.trim()) return;
 
     setIsSubmitting(true);
-    const selectedCatObj = categories.find((c) => c.id === category);
+    const selectedCatObj = REPORT_CATEGORIES.find((c) => c.id === category);
 
     setTimeout(() => {
-      onSubmitReport({
+      const created = onSubmitReport({
         category,
         categoryLabel: selectedCatObj ? selectedCatObj.label : 'Reclamo',
         title,
-        description: description || 'Reporte registrado por vecino a través de Muni Limpia Corrientes.',
+        description: description || 'Reclamo registrado por un vecino desde Muni Limpia.',
         address,
         neighborhood,
         photoUrl: photoPreview || undefined,
-        syncedToDrive: saveToDrive,
       });
 
-      const newCode = `CR-${Math.floor(1000 + Math.random() * 9000)}`;
-      setJustSubmittedCode(newCode);
+      setJustSubmittedCode(created.code);
       setIsSubmitting(false);
 
       // Trigger celebrate confetti
@@ -213,19 +167,21 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({
               1. Selecciona el tipo de problema
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {categories.map((cat) => {
+              {REPORT_CATEGORIES.map((cat) => {
                 const isSelected = category === cat.id;
                 return (
                   <div
                     key={cat.id}
-                    onClick={() => setCategory(cat.id as IncidentReport['category'])}
+                    onClick={() => setCategory(cat.id)}
                     className={`p-3 rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
                       isSelected
                         ? 'border-[#006b21] bg-[#006b21]/5 ring-2 ring-[#006b21]'
                         : 'border-[#e2e8f0] bg-white hover:bg-[#f7fafc]'
                     }`}
                   >
-                    <div className="text-2xl mb-1">{cat.icon}</div>
+                    <div className="text-2xl mb-1">
+                      <cat.Icon className="w-6 h-6" />
+                    </div>
                     <div>
                       <h4 className="text-xs font-bold text-[#181c1e]">{cat.label}</h4>
                       <p className="text-[10px] text-[#555f71] line-clamp-2 mt-0.5">
@@ -365,27 +321,6 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({
             )}
           </div>
 
-          {/* Google Drive Checkbox Backup */}
-          <div className="bg-[#f1f4f6] p-3.5 rounded-xl border border-[#e2e8f0] flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <DownloadCloud className="w-5 h-5 text-[#006b21]" />
-              <div className="flex flex-col">
-                <span className="text-xs font-bold text-[#181c1e]">
-                  Guardar comprobante en Google Drive
-                </span>
-                <span className="text-[10px] text-[#555f71]">
-                  Se sincronizará automáticamente el ticket en tu nube
-                </span>
-              </div>
-            </div>
-            <input
-              type="checkbox"
-              checked={saveToDrive}
-              onChange={(e) => setSaveToDrive(e.target.checked)}
-              className="w-5 h-5 accent-[#006b21] rounded cursor-pointer"
-            />
-          </div>
-
           {/* Submit Button */}
           <button
             type="submit"
@@ -451,7 +386,7 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({
                           #{rep.code}
                         </span>
                         <span className="text-xs text-[#555f71] font-medium">
-                          {rep.createdAt}
+                          {formatReportDate(rep.createdAt)}
                         </span>
                       </div>
                       <h3 className="text-base font-bold text-[#181c1e] mt-1 font-['Public_Sans',sans-serif]">
@@ -514,19 +449,14 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({
                     </div>
                   </div>
 
-                  {/* Actions: Export to Google Drive */}
-                  <div className="flex items-center justify-between pt-1 border-t border-[#e2e8f0]/60">
-                    <div className="flex items-center gap-1.5 text-xs text-[#555f71]">
-                      <DownloadCloud className="w-3.5 h-3.5 text-[#006b21]" />
-                      <span>Backup: {rep.syncedToDrive ? 'Sincronizado' : 'Pendiente'}</span>
-                    </div>
-
+                  {/* Actions: Descargar comprobante (D2) */}
+                  <div className="flex items-center justify-end pt-1 border-t border-[#e2e8f0]/60">
                     <button
                       onClick={() => onExportReport(rep)}
                       className="px-3 py-1.5 bg-[#f1f4f6] hover:bg-[#e5e9eb] text-[#006b21] font-bold text-xs rounded-lg transition-colors flex items-center gap-1.5"
                     >
                       <DownloadCloud className="w-3.5 h-3.5" />
-                      Descargar / Google Drive
+                      Descargar comprobante
                     </button>
                   </div>
                 </div>
