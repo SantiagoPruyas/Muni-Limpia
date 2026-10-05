@@ -1,29 +1,108 @@
 @import "tailwindcss";
 
-@layer base {
-  :root {
-    --primary: #006b21;
-    --primary-container: #00872c;
-    --on-primary: #ffffff;
-    --surface: #f7fafc;
-    --surface-container: #ebeef0;
-    --surface-container-high: #e5e9eb;
-    --surface-container-low: #f1f4f6;
-    --on-surface: #181c1e;
-    --on-surface-variant: #3e4a3c;
-    --border-low: #e2e8f0;
-  }
+/*
+ * Tokens de Muni Limpia. Fuente: app/variables.css de La Muni Oficios
+ * (gobierno-oficios/apps/front-end) y logos oficiales en public/logos/.
+ * `static` emite todas las variables aunque no haya una clase que las use:
+ * los pins de Leaflet y categoryMeta las leen como var(--color-…).
+ */
+@theme static {
+  /* Marca */
+  --color-brand-500: #18a03a; /* verde de los logos: íconos, fills, foco. Nunca fondo de texto blanco <19px */
+  --color-brand-600: #0d7a2b; /* primario interactivo (5,47:1 con blanco) */
+  --color-brand-700: #0a5c22; /* hover/pressed, hero y panel de escritorio */
+  --color-brand-accent: #41b45e; /* solo sobre brand-700 */
+  --color-brand-soft: #e5f4e8; /* selección, no leído */
 
+  /* Superficies */
+  --color-surface: #f2f9f3;
+  --color-surface-card: #ffffff;
+  --color-surface-muted: #e6f3e8;
+
+  /* Texto */
+  --color-ink: #0f172a;
+  --color-ink-body: #1e293b;
+  --color-ink-muted: #475569;
+
+  /* Bordes */
+  --color-line: #e2e8f0;
+  --color-line-strong: #cbd5e1;
+
+  /* Funcionales y estados */
+  --color-info: #1d4ed8;
+  --color-success: #0d7a2b;
+  --color-warning: #b45309;
+  --color-danger: #b91c1c;
+
+  /* Categorías de residuos */
+  --color-cat-comunes: #334155;
+  --color-cat-reciclables: var(--color-brand-500);
+  --color-cat-poda: #b45309;
+
+  /* Tipografía (misma familia que La Muni Oficios) */
+  --font-display: "Montserrat", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Forma */
+  --radius-control: 12px;
+  --radius-card: 16px;
+  --radius-sheet: 24px;
+
+  /* Profundidad: las 3 sombras de variables.css */
+  --shadow-elev-1: 0 2px 8px rgba(15, 23, 42, 0.08);
+  --shadow-elev-2: 0 10px 30px -12px rgba(15, 23, 42, 0.12);
+  --shadow-elev-3: 0 18px 48px -16px rgba(15, 23, 42, 0.18);
+
+  /* Movimiento: 150–250 ms, ease-out al entrar */
+  --animate-fadeIn: fadeIn 200ms ease-out both;
+  --animate-fadeOut: fadeOut 150ms ease-in both;
+  --animate-slideUp: slideUp 250ms ease-out both;
+  --animate-slideDown: slideDown 250ms ease-out both;
+  --animate-slideOutDown: slideOutDown 150ms ease-in both;
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+  }
+  @keyframes fadeOut {
+    to { opacity: 0; }
+  }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(24px); }
+  }
+  @keyframes slideDown {
+    from { opacity: 0; transform: translateY(-12px); }
+  }
+  @keyframes slideOutDown {
+    to { opacity: 0; transform: translateY(24px); }
+  }
+}
+
+@layer base {
   body {
-    font-family: 'Public Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-    background-color: #f7fafc;
-    color: #181c1e;
+    background-color: var(--color-surface);
+    color: var(--color-ink-body);
     overscroll-behavior-y: none;
     -webkit-tap-highlight-color: transparent;
   }
 }
 
-/* Custom smooth scroll and transitions */
+/* Fuera de capas para ganarle a `outline-none` */
+:focus-visible {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 .scrollbar-none::-webkit-scrollbar {
   display: none;
 }
@@ -32,34 +111,9 @@
   scrollbar-width: none;
 }
 
-@keyframes pulse-subtle {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.08); opacity: 0.85; }
-}
-
-.animate-pulse-subtle {
-  animation: pulse-subtle 3s ease-in-out infinite;
-}
-
-@layer base {
-  body {
-    overscroll-behavior-y: none;
-    -webkit-tap-highlight-color: transparent;
-  }
-}
-
-/* Custom Scrollbar */
-.scrollbar-none::-webkit-scrollbar {
-  display: none;
-}
-.scrollbar-none {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-/* Leaflet Map overrides for smooth mobile feel */
+/* Leaflet */
 .leaflet-container {
-  font-family: 'Public Sans', sans-serif !important;
+  font-family: var(--font-sans) !important;
   width: 100% !important;
   height: 100% !important;
   z-index: 1;
@@ -70,18 +124,12 @@
 }
 
 .leaflet-control-attribution {
-  font-size: 9px !important;
   background: rgba(255, 255, 255, 0.7) !important;
   border-radius: 4px;
   padding: 0 4px !important;
 }
 
-/* Pulse animation */
-@keyframes soft-pulse {
-  0%, 100% { transform: scale(1); opacity: 0.8; }
-  50% { transform: scale(1.15); opacity: 0.3; }
-}
-
-.animate-soft-pulse {
-  animation: soft-pulse 2s infinite ease-in-out;
+/* Polilínea de recorrido: el color sale del token, no de un hex en JS */
+.route-line {
+  stroke: var(--color-brand-500);
 }
