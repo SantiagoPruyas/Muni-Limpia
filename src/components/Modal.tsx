@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { m } from 'motion/react';
 
 interface ModalProps {
   onClose: () => void;
@@ -16,6 +17,8 @@ interface ModalProps {
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 const EXIT_MS = 150;
+const ENTER = { duration: 0.25, ease: 'easeOut' } as const;
+const EXIT = { duration: EXIT_MS / 1000, ease: 'easeIn' } as const;
 
 export const Modal: React.FC<ModalProps> = ({
   onClose,
@@ -81,15 +84,17 @@ export const Modal: React.FC<ModalProps> = ({
   const isSheet = variant === 'sheet';
 
   return (
-    <div
+    <m.div
       className={`fixed inset-0 z-50 flex justify-center bg-ink/60 backdrop-blur-sm ${
         isSheet ? 'items-end sm:items-center sm:p-4' : 'items-center p-4'
-      } ${closing ? 'animate-fadeOut' : 'animate-fadeIn'}`}
+      }`}
+      initial={{ opacity: 0 }}
+      animate={closing ? { opacity: 0, transition: EXIT } : { opacity: 1, transition: ENTER }}
       onClick={(e) => {
         if (e.target === e.currentTarget) close();
       }}
     >
-      <div
+      <m.div
         ref={panelRef}
         id={id}
         role="dialog"
@@ -98,10 +103,12 @@ export const Modal: React.FC<ModalProps> = ({
         tabIndex={-1}
         className={`w-full bg-surface-card border border-line shadow-elev-3 overflow-hidden flex flex-col outline-none ${
           isSheet ? 'rounded-t-sheet sm:rounded-sheet' : 'rounded-sheet'
-        } ${closing ? 'animate-slideOutDown' : 'animate-slideUp'} ${className}`}
+        } ${className}`}
+        initial={{ opacity: 0, y: 24 }}
+        animate={closing ? { opacity: 0, y: 24, transition: EXIT } : { opacity: 1, y: 0, transition: ENTER }}
       >
         {children(close)}
-      </div>
-    </div>
+      </m.div>
+    </m.div>
   );
 };

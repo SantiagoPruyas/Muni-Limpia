@@ -53,27 +53,17 @@
   --shadow-elev-2: 0 10px 30px -12px rgba(15, 23, 42, 0.12);
   --shadow-elev-3: 0 18px 48px -16px rgba(15, 23, 42, 0.18);
 
-  /* Movimiento: 150–250 ms, ease-out al entrar */
+  /* Movimiento: 150–250 ms, ease-out al entrar. Hojas, modales, toasts y pestañas usan `motion`. */
   --animate-fadeIn: fadeIn 200ms ease-out both;
-  --animate-fadeOut: fadeOut 150ms ease-in both;
-  --animate-slideUp: slideUp 250ms ease-out both;
-  --animate-slideDown: slideDown 250ms ease-out both;
-  --animate-slideOutDown: slideOutDown 150ms ease-in both;
+  /* Halo "en vivo" del camión: la única animación continua */
+  --animate-halo: halo 2s ease-out infinite;
 
   @keyframes fadeIn {
     from { opacity: 0; }
   }
-  @keyframes fadeOut {
-    to { opacity: 0; }
-  }
-  @keyframes slideUp {
-    from { opacity: 0; transform: translateY(24px); }
-  }
-  @keyframes slideDown {
-    from { opacity: 0; transform: translateY(-12px); }
-  }
-  @keyframes slideOutDown {
-    to { opacity: 0; transform: translateY(24px); }
+  @keyframes halo {
+    from { opacity: 0.45; transform: scale(1); }
+    to { opacity: 0; transform: scale(1.7); }
   }
 }
 

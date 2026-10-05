@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { m } from 'motion/react';
 import {
   CORRIENTES_ZONES,
   INITIAL_REPORTS,
@@ -15,7 +16,7 @@ import {
 } from './types';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
-import { MapScreen } from './components/MapScreen';
+import { MapScreen, resetMapHint } from './components/MapScreen';
 import { HomeScreen } from './components/HomeScreen';
 import { SchedulesScreen } from './components/SchedulesScreen';
 import { ReportScreen } from './components/ReportScreen';
@@ -46,9 +47,17 @@ const INITIAL_PROFILE: UserProfile = {
 };
 const MAX_TOASTS = 2;
 const TOAST_MS = 4500;
+const CLOCK_TICK_MS = 30_000;
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('inicio');
+
+  // Las pantallas calculan nextService con la hora actual: un re-render periódico hace avanzar "Pasa en…".
+  const [, setClockTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setClockTick((t) => t + 1), CLOCK_TICK_MS);
+    return () => clearInterval(id);
+  }, []);
 
   // Inicio abre Reportar en el historial; al salir de la pestaña vuelve al formulario.
   const [reportView, setReportView] = useState<'nuevo' | 'historial'>('nuevo');
@@ -183,12 +192,7 @@ export default function App() {
       ...prev,
     ]);
 
-    addToast({
-      type: 'success',
-      title: 'Reclamo registrado',
-      message: `Tu número de reclamo es #${code}.`,
-    });
-
+    // Sin toast: la pantalla de éxito de Reportar ya muestra el código.
     return newReport;
   };
 
@@ -222,6 +226,7 @@ export default function App() {
     setSelectedZone(CORRIENTES_ZONES[0]);
     setProfile(INITIAL_PROFILE);
     reportSeq.current = initialReportSeq;
+    resetMapHint();
     setActiveTab('inicio');
     setToasts([]);
     addToast({ type: 'info', title: 'Demo restablecida', message: 'Volvimos todo al estado inicial.' });
@@ -239,73 +244,82 @@ export default function App() {
 
       {/* Columna de la app (D1). pt-16 compensa el header fijo. */}
       <main className={`flex-1 ${APP_COLUMN} lg:border-x lg:border-line pt-16 flex flex-col`}>
-        {activeTab === 'mapa' && (
-          <MapScreen
-            zones={filteredZones}
-            selectedZone={selectedZone}
-            onSelectZone={selectZone}
-            activeCategory={filters.category}
-            onSelectCategory={setCategory}
-            onClearFilters={clearFilters}
-            activeFilterCount={activeFilterCount}
-            onOpenRouteDetails={(zone) => setModalRouteZone(zone)}
-            onOpenFilter={() => setShowFilterModal(true)}
-            onShare={(zone) => setShareZone(zone)}
-            onToggleReminder={handleToggleReminder}
-            activeReminders={activeReminders}
-            sheetOpenOnMount={mapSheetOpen}
-          />
-        )}
-
-        {activeTab === 'inicio' && (
-          <HomeScreen
-            currentZone={selectedZone}
-            reports={reports}
-            profile={profile}
-            onNavigate={(tab) => setActiveTab(tab)}
-            onOpenGreenPoints={() => {
-              setFilters({ ...DEFAULT_FILTERS, category: 'reciclables' });
-              setActiveTab('mapa');
-            }}
-            onOpenReportHistory={() => {
-              setReportView('historial');
-              setActiveTab('reportar');
-            }}
-            onToggleReminder={handleToggleReminder}
-            onExportSchedule={handleDownloadSchedule}
-            isReminderActive={activeReminders.includes(selectedZone.id)}
-          />
-        )}
-
-        {activeTab === 'horarios' && (
-          <SchedulesScreen
-            zones={filteredZones}
-            activeCategory={filters.category}
-            onSelectCategory={setCategory}
-            onClearFilters={clearFilters}
-            activeFilterCount={activeFilterCount}
-            onSelectZone={(zone) => {
-              selectZone(zone);
-              setMapSheetOpen(true);
-              setActiveTab('mapa');
-            }}
-            onOpenRouteDetails={(zone) => setModalRouteZone(zone)}
-            onToggleReminder={handleToggleReminder}
-            onExportSchedule={handleDownloadSchedule}
-            onShare={(zone) => setShareZone(zone)}
-            activeReminders={activeReminders}
-          />
-        )}
-
-        {activeTab === 'reportar' && (
-          <ReportScreen
-            reports={reports}
-            onSubmitReport={handleSubmitReport}
-            onExportReport={handleDownloadReceipt}
-            profile={profile}
-            initialView={reportView}
-          />
-        )}
+        {/* Cambio de pestaña: fade corto, solo opacidad (un transform rompería los `fixed` de adentro). */}
+        <m.div
+          key={activeTab}
+          className="flex-1 flex flex-col"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.15, ease: 'easeOut' }}
+        >
+          {activeTab === 'mapa' && (
+            <MapScreen
+              zones={filteredZones}
+              selectedZone={selectedZone}
+              onSelectZone={selectZone}
+              activeCategory={filters.category}
+              onSelectCategory={setCategory}
+              onClearFilters={clearFilters}
+              activeFilterCount={activeFilterCount}
+              onOpenRouteDetails={(zone) => setModalRouteZone(zone)}
+              onOpenFilter={() => setShowFilterModal(true)}
+              onShare={(zone) => setShareZone(zone)}
+              onToggleReminder={handleToggleReminder}
+              activeReminders={activeReminders}
+              sheetOpenOnMount={mapSheetOpen}
+            />
+          )}
+  
+          {activeTab === 'inicio' && (
+            <HomeScreen
+              currentZone={selectedZone}
+              reports={reports}
+              profile={profile}
+              onNavigate={(tab) => setActiveTab(tab)}
+              onOpenGreenPoints={() => {
+                setFilters({ ...DEFAULT_FILTERS, category: 'reciclables' });
+                setActiveTab('mapa');
+              }}
+              onOpenReportHistory={() => {
+                setReportView('historial');
+                setActiveTab('reportar');
+              }}
+              onToggleReminder={handleToggleReminder}
+              onExportSchedule={handleDownloadSchedule}
+              isReminderActive={activeReminders.includes(selectedZone.id)}
+            />
+          )}
+  
+          {activeTab === 'horarios' && (
+            <SchedulesScreen
+              zones={filteredZones}
+              activeCategory={filters.category}
+              onSelectCategory={setCategory}
+              onClearFilters={clearFilters}
+              activeFilterCount={activeFilterCount}
+              onSelectZone={(zone) => {
+                selectZone(zone);
+                setMapSheetOpen(true);
+                setActiveTab('mapa');
+              }}
+              onOpenRouteDetails={(zone) => setModalRouteZone(zone)}
+              onToggleReminder={handleToggleReminder}
+              onExportSchedule={handleDownloadSchedule}
+              onShare={(zone) => setShareZone(zone)}
+              activeReminders={activeReminders}
+            />
+          )}
+  
+          {activeTab === 'reportar' && (
+            <ReportScreen
+              reports={reports}
+              onSubmitReport={handleSubmitReport}
+              onExportReport={handleDownloadReceipt}
+              profile={profile}
+              initialView={reportView}
+            />
+          )}
+        </m.div>
       </main>
 
       {/* Bottom Floating Navigation */}

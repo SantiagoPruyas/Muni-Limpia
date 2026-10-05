@@ -19,6 +19,7 @@ import {
   Crosshair,
   type LucideIcon
 } from 'lucide-react';
+import { AnimatePresence, m } from 'motion/react';
 import { ZoneLocation, FilterCategory } from '../types';
 import { categoryMeta } from '../lib/categoryMeta';
 import { CORRIENTES_ZONES } from '../data/corrientesData';
@@ -56,6 +57,34 @@ const JUNIN_ROUTE_COORDS: [number, number][] = [
 ];
 const ROUTE_ZONE_ID = 'junin-1200';
 const CITY_CENTER: [number, number] = [-27.4698, -58.8341];
+
+/** Una vuelta completa del camión al recorrido. */
+const TRUCK_LOOP_MS = 30_000;
+/** Fracción del recorrido en la que el camión se desvanece al llegar y aparece al volver a salir. */
+const TRUCK_FADE = 0.03;
+
+// Tramos del recorrido con su largo (equirectangular, alcanza para unas cuadras) y rumbo en
+// pantalla (0° = este, positivo = sentido horario), para avanzar a velocidad constante.
+const ROUTE_SEGMENTS = (() => {
+  const cosLat = Math.cos((CITY_CENTER[0] * Math.PI) / 180);
+  let start = 0;
+  return JUNIN_ROUTE_COORDS.slice(1).map((to, i) => {
+    const from = JUNIN_ROUTE_COORDS[i];
+    const east = (to[1] - from[1]) * cosLat;
+    const north = to[0] - from[0];
+    const length = Math.hypot(east, north);
+    const segment = { from, to, start, length, heading: (Math.atan2(-north, east) * 180) / Math.PI };
+    start += length;
+    return segment;
+  });
+})();
+const ROUTE_LENGTH = ROUTE_SEGMENTS[ROUTE_SEGMENTS.length - 1].start + ROUTE_SEGMENTS[ROUTE_SEGMENTS.length - 1].length;
+
+/** El glifo de lucide mira al este: hacia el oeste se espeja para no quedar cabeza abajo. */
+const truckGlyphTransform = (heading: number) =>
+  Math.abs(heading) <= 90
+    ? `rotate(${heading}deg) scaleX(1)`
+    : `rotate(${heading > 0 ? heading - 180 : heading + 180}deg) scaleX(-1)`;
 
 const SELECT_ZOOM = 16;
 /** Desde este zoom todos los pins llevan etiqueta; antes, solo el seleccionado. */
@@ -103,13 +132,14 @@ const pinHtml = (zone: ZoneLocation, selected: boolean, showLabel: boolean) => {
   `;
 };
 
+// El halo "en vivo" es la única animación continua; con reduced-motion no se muestra.
 const TRUCK_ICON_HTML = `
   <div class="relative w-11 h-11 flex items-center justify-center">
-    <span class="absolute inset-1 rounded-full bg-brand-500 opacity-40 animate-ping"></span>
+    <span class="absolute inset-1 rounded-full bg-brand-500 animate-halo motion-reduce:hidden"></span>
     <span class="relative w-9 h-9 rounded-full bg-brand-600 border-2 border-white shadow-elev-2 flex items-center justify-center text-white">
-      <svg class="w-4 h-4" ${SVG_ATTRS}>${TRUCK_GLYPH}</svg>
+      <svg class="truck-glyph w-4 h-4 transition-transform duration-300 ease-out" ${SVG_ATTRS}>${TRUCK_GLYPH}</svg>
     </span>
-    <span class="absolute top-full mt-0.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-brand-600 text-white text-xs font-semibold whitespace-nowrap shadow-elev-1">Móvil #14 · En vivo</span>
+    <span class="absolute top-full mt-0.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-brand-600 text-white text-xs font-semibold whitespace-nowrap shadow-elev-1">Móvil 14 · en vivo</span>
   </div>
 `;
 
@@ -122,6 +152,10 @@ const CATEGORY_PILLS: Array<{ id: string; category: FilterCategory }> = [
 
 // La píldora de ayuda se oculta tras la primera interacción, también al volver a la pestaña.
 let mapHintDismissed = false;
+/** "Restablecer demo": la ayuda vuelve a aparecer como en el primer arranque. */
+export const resetMapHint = () => {
+  mapHintDismissed = false;
+};
 
 const floatingButton = 'w-11 h-11 rounded-control shadow-elev-2 border border-line flex items-center justify-center transition-colors';
 
@@ -159,7 +193,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const markersLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const routePolylineRef = useRef<L.Polyline | null>(null);
-  const truckMarkerRef = useRef<L.Marker | null>(null);
   // Para calcular el área visible del mapa entre los controles de arriba y la hoja
   const topOverlayRef = useRef<HTMLDivElement | null>(null);
   const bottomStackRef = useRef<HTMLDivElement | null>(null);
@@ -319,17 +352,11 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     );
   }, [showRoute, isRouteHighlighted, isMapReady]);
 
-  // Animated Live Truck along polyline
+  // Camión en vivo: avanza cada frame por la polilínea a velocidad constante. El progreso sale
+  // del reloj, así al volver a la pestaña sigue donde corresponde.
   useEffect(() => {
-    if (!mapInstanceRef.current || !showLiveTruck || !showRoute) {
-      if (truckMarkerRef.current && mapInstanceRef.current) {
-        mapInstanceRef.current.removeLayer(truckMarkerRef.current);
-        truckMarkerRef.current = null;
-      }
-      return;
-    }
-
-    let progress = 0.45;
+    const map = mapInstanceRef.current;
+    if (!map || !showLiveTruck || !showRoute) return;
 
     const truckIcon = L.divIcon({
       className: 'map-truck-pin',
@@ -337,40 +364,43 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       iconSize: [44, 44],
       iconAnchor: [22, 22],
     });
+    const marker = L.marker(JUNIN_ROUTE_COORDS[0], { icon: truckIcon, interactive: false, keyboard: false }).addTo(map);
+    const glyph = marker.getElement()?.querySelector<SVGElement>('.truck-glyph');
 
-    const getCoordAtProgress = (p: number): [number, number] => {
-      const totalPoints = JUNIN_ROUTE_COORDS.length;
-      const indexFloat = p * (totalPoints - 1);
-      const index = Math.floor(indexFloat);
-      const remainder = indexFloat - index;
+    // Durante la animación de zoom de Leaflet, mover el marcador lo haría saltar.
+    let zooming = false;
+    const onZoomAnim = () => (zooming = true);
+    const onZoomEnd = () => (zooming = false);
+    map.on('zoomanim', onZoomAnim);
+    map.on('zoomend', onZoomEnd);
 
-      if (index >= totalPoints - 1) return JUNIN_ROUTE_COORDS[totalPoints - 1];
-
-      const p1 = JUNIN_ROUTE_COORDS[index];
-      const p2 = JUNIN_ROUTE_COORDS[index + 1];
-
-      return [p1[0] + (p2[0] - p1[0]) * remainder, p1[1] + (p2[1] - p1[1]) * remainder];
+    let frame = 0;
+    let segment: (typeof ROUTE_SEGMENTS)[number] | undefined;
+    const tick = () => {
+      frame = requestAnimationFrame(tick);
+      if (zooming) return;
+      const progress = (Date.now() % TRUCK_LOOP_MS) / TRUCK_LOOP_MS;
+      const distance = progress * ROUTE_LENGTH;
+      const current = ROUTE_SEGMENTS.find((s) => distance < s.start + s.length) ?? ROUTE_SEGMENTS[ROUTE_SEGMENTS.length - 1];
+      const t = (distance - current.start) / current.length;
+      marker.setLatLng([
+        current.from[0] + (current.to[0] - current.from[0]) * t,
+        current.from[1] + (current.to[1] - current.from[1]) * t,
+      ]);
+      // Se desvanece al final del recorrido y reaparece al principio, en vez de saltar.
+      marker.setOpacity(Math.min(1, progress / TRUCK_FADE, (1 - progress) / TRUCK_FADE));
+      if (current !== segment) {
+        segment = current;
+        if (glyph) glyph.style.transform = truckGlyphTransform(current.heading);
+      }
     };
-
-    const initialPos = getCoordAtProgress(progress);
-    const truckMarker = L.marker(initialPos, { icon: truckIcon, interactive: false, keyboard: false }).addTo(
-      mapInstanceRef.current
-    );
-    truckMarkerRef.current = truckMarker;
-
-    const interval = setInterval(() => {
-      progress += 0.012;
-      if (progress > 1) progress = 0.05;
-      const newPos = getCoordAtProgress(progress);
-      truckMarker.setLatLng(newPos);
-    }, 1200);
+    tick();
 
     return () => {
-      clearInterval(interval);
-      if (truckMarkerRef.current && mapInstanceRef.current) {
-        mapInstanceRef.current.removeLayer(truckMarkerRef.current);
-        truckMarkerRef.current = null;
-      }
+      cancelAnimationFrame(frame);
+      map.off('zoomanim', onZoomAnim);
+      map.off('zoomend', onZoomEnd);
+      marker.remove();
     };
   }, [showLiveTruck, showRoute, isMapReady]);
 
@@ -513,7 +543,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 <span className="flex flex-col">
                   <span className="text-sm font-semibold text-ink">{z.name}</span>
                   <span className="text-xs text-ink-muted">
-                    {z.neighborhood} · {z.type}
+                    {z.neighborhood} · {z.type === 'Punto Verde' ? z.type : categoryMeta[z.category].label}
                   </span>
                 </span>
               </button>
@@ -644,18 +674,29 @@ export const MapScreen: React.FC<MapScreenProps> = ({
           </button>
         </div>
 
-        {showSheet && selectedZone ? (
-          <div ref={sheetRef} className="pointer-events-auto">
-            <MapZoneSheet
-              zone={selectedZone}
-              isReminderActive={isReminderActive}
-              onClose={() => setIsSheetOpen(false)}
-              onToggleReminder={onToggleReminder}
-              onOpenRouteDetails={onOpenRouteDetails}
-              onShare={onShare}
-            />
-          </div>
-        ) : zones.length === 0 ? (
+        <AnimatePresence>
+          {showSheet && selectedZone && (
+            <m.div
+              key="sheet"
+              ref={sheetRef}
+              className="pointer-events-auto"
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0, transition: { duration: 0.25, ease: 'easeOut' } }}
+              exit={{ opacity: 0, y: 24, transition: { duration: 0.15, ease: 'easeIn' } }}
+            >
+              <MapZoneSheet
+                zone={selectedZone}
+                isReminderActive={isReminderActive}
+                onClose={() => setIsSheetOpen(false)}
+                onToggleReminder={onToggleReminder}
+                onOpenRouteDetails={onOpenRouteDetails}
+                onShare={onShare}
+              />
+            </m.div>
+          )}
+        </AnimatePresence>
+
+        {showSheet ? null : zones.length === 0 ? (
           <button
             id="map-empty-clear-filters"
             onClick={onClearFilters}

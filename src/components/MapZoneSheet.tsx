@@ -44,7 +44,7 @@ export const MapZoneSheet: React.FC<MapZoneSheetProps> = ({
     <section
       id="map-zone-sheet"
       aria-label={`Información de ${zone.name}`}
-      className="bg-surface-card rounded-sheet shadow-elev-3 border border-line p-4 flex flex-col gap-3 animate-slideUp"
+      className="bg-surface-card rounded-sheet shadow-elev-3 border border-line p-4 flex flex-col gap-3"
     >
       <div aria-hidden="true" className="w-9 h-1 rounded-full bg-line mx-auto" />
 
