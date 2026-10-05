@@ -14,6 +14,34 @@ export const DAY_NAMES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 
 
 const MIN_PER_DAY = 24 * 60;
 
+/** Horarios y fechas van en hora de Corrientes, abra la demo desde donde la abra. */
+export const TIME_ZONE = 'America/Argentina/Cordoba';
+
+const CLOCK_FORMAT = new Intl.DateTimeFormat('en-US', {
+  timeZone: TIME_ZONE,
+  year: 'numeric',
+  month: 'numeric',
+  day: 'numeric',
+  weekday: 'short',
+  hour: 'numeric',
+  minute: 'numeric',
+  hourCycle: 'h23',
+});
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** Fecha y hora de pared en Corrientes. `day` como Date.getDay() (0 = domingo), `month` desde 0. */
+export function cityClock(date: Date = new Date()) {
+  const parts = Object.fromEntries(CLOCK_FORMAT.formatToParts(date).map((p) => [p.type, p.value]));
+  return {
+    year: Number(parts.year),
+    month: Number(parts.month) - 1,
+    date: Number(parts.day),
+    day: WEEKDAYS.indexOf(parts.weekday),
+    hours: Number(parts.hour),
+    minutes: Number(parts.minute),
+  };
+}
+
 const toMinutes = (hhmm: string) => {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + m;
@@ -32,8 +60,9 @@ export function nextService(zone: ZoneLocation, now: Date = new Date()): Service
   const start = toMinutes(zone.start);
   const end = toMinutes(zone.end);
   const duration = end > start ? end - start : end + MIN_PER_DAY - start;
-  const nowMin = now.getHours() * 60 + now.getMinutes();
-  const today = now.getDay();
+  const clock = cityClock(now);
+  const nowMin = clock.hours * 60 + clock.minutes;
+  const today = clock.day;
   const greenPoint = (openNow: boolean) => (isGreenPoint ? { openNow, closesAt: zone.end } : {});
 
   // En curso: una ventana que empezó hoy, o ayer si cruza la medianoche.

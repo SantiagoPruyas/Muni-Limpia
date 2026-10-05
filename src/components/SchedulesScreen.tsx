@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { ZoneLocation, FilterCategory } from '../types';
 import { categoryMeta } from '../lib/categoryMeta';
-import { DAY_NAMES, nextService } from '../data/schedule';
+import { DAY_NAMES, cityClock, nextService } from '../data/schedule';
 
 interface SchedulesScreenProps {
   /** Ya filtradas por App (mismo filtro que el mapa). */
@@ -69,7 +69,7 @@ export const SchedulesScreen: React.FC<SchedulesScreenProps> = ({
   const [searchFilter, setSearchFilter] = useState('');
   const [selectedDay, setSelectedDay] = useState<DayFilter>('hoy');
 
-  const today = new Date().getDay();
+  const today = cityClock().day;
   const day = selectedDay === 'hoy' ? today : selectedDay;
   // Filtros del mapa que esta pantalla no muestra: barrio y turno (la categoría se ve en las píldoras).
   const hiddenFilterCount = activeFilterCount - (activeCategory === 'todos' ? 0 : 1);

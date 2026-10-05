@@ -4,8 +4,8 @@ import type { ZoneLocation } from '../src/types.ts';
 
 const zone = (over: Partial<ZoneLocation>) => ({ type: 'Residuos Comunes', ...over }) as ZoneLocation;
 
-// 2026-09-30 es miércoles.
-const wed = (h: number, m: number) => new Date(2026, 8, 30, h, m);
+// 2026-09-30 es miércoles. Hora de Corrientes (UTC−3), así pasa con cualquier TZ del equipo.
+const wed = (h: number, m: number) => new Date(Date.UTC(2026, 8, 30, h + 3, m));
 
 const lmv = zone({ days: [1, 3, 5], start: '20:00', end: '22:00' });
 const night = zone({ days: [0, 1, 2, 3, 4, 5, 6], start: '22:00', end: '02:00' });

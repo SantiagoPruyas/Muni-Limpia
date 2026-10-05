@@ -1,5 +1,6 @@
 import { AlertTriangle, ClipboardList, Package, Trash2, Trees, Truck, type LucideIcon } from 'lucide-react';
 import { IncidentReport } from '../types';
+import { cityClock } from './schedule';
 
 /** Única tabla de categorías de reclamo: la usan el formulario y los datos seed. */
 export const REPORT_CATEGORIES: {
@@ -29,10 +30,11 @@ export const reportCategoryLabel = (id: IncidentReport['category']) =>
 
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 
-/** "Hoy 08:15" si es del día, si no "25 ago 10:30". */
+/** "Hoy 08:15" si es del día, si no "25 ago 10:30". En hora de Corrientes. */
 export function formatReportDate(iso: string, now: Date = new Date()): string {
-  const d = new Date(iso);
-  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  if (d.toDateString() === now.toDateString()) return `Hoy ${time}`;
-  return `${d.getDate()} ${MONTHS[d.getMonth()]} ${time}`;
+  const d = cityClock(new Date(iso));
+  const n = cityClock(now);
+  const time = `${String(d.hours).padStart(2, '0')}:${String(d.minutes).padStart(2, '0')}`;
+  if (d.year === n.year && d.month === n.month && d.date === n.date) return `Hoy ${time}`;
+  return `${d.date} ${MONTHS[d.month]} ${time}`;
 }

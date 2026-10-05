@@ -1,4 +1,5 @@
 import { IncidentReport, ZoneLocation } from '../types';
+import { TIME_ZONE } from '../data/schedule';
 
 const escapeHtml = (value: string) =>
   value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -32,7 +33,7 @@ function downloadHtml(fileName: string, title: string, body: string): string {
 }
 
 function saveHtml(fileName: string, title: string, body: string, municipalidadSvg: string, muniLimpiaSvg: string) {
-  const issuedAt = new Date().toLocaleString('es-AR', { dateStyle: 'long', timeStyle: 'short' });
+  const issuedAt = new Date().toLocaleString('es-AR', { dateStyle: 'long', timeStyle: 'short', timeZone: TIME_ZONE });
   const html = `<!doctype html>
 <html lang="es">
 <head>
