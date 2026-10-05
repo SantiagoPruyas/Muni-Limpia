@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   CORRIENTES_ZONES,
   INITIAL_REPORTS,
@@ -33,6 +33,12 @@ const TOAST_MS = 4500;
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('inicio');
+
+  // Inicio abre Reportar en el historial; al salir de la pestaña vuelve al formulario.
+  const [reportView, setReportView] = useState<'nuevo' | 'historial'>('nuevo');
+  useEffect(() => {
+    if (activeTab !== 'reportar') setReportView('nuevo');
+  }, [activeTab]);
 
   // Filtro único de zonas: lo leen las píldoras del mapa, FilterModal y Horarios.
   // Un resultado vacío queda vacío (las pantallas muestran "Limpiar filtros").
@@ -225,11 +231,17 @@ export default function App() {
             reports={reports}
             profile={profile}
             onNavigate={(tab) => setActiveTab(tab)}
-            onSelectZone={selectZone}
+            onOpenGreenPoints={() => {
+              setFilters({ ...DEFAULT_FILTERS, category: 'reciclables' });
+              setActiveTab('mapa');
+            }}
+            onOpenReportHistory={() => {
+              setReportView('historial');
+              setActiveTab('reportar');
+            }}
             onToggleReminder={handleToggleReminder}
             onExportSchedule={handleDownloadSchedule}
             isReminderActive={activeReminders.includes(selectedZone.id)}
-            onOpenReportModal={() => setActiveTab('reportar')}
           />
         )}
 
@@ -258,6 +270,7 @@ export default function App() {
             onSubmitReport={handleSubmitReport}
             onExportReport={handleDownloadReceipt}
             profile={profile}
+            initialView={reportView}
           />
         )}
       </main>

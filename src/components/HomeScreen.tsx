@@ -1,32 +1,40 @@
 import React from 'react';
 import {
   MapPin,
-  Clock,
   Bell,
-  CheckCircle2,
-  Trash2,
-  Recycle,
-  AlertTriangle,
-  FileText,
-  Calendar,
-  Sparkles,
+  BellRing,
+  Download,
   ArrowRight,
-  ShieldCheck,
-  DownloadCloud
+  ChevronRight,
+  Megaphone,
+  CalendarDays,
+  type LucideIcon,
 } from 'lucide-react';
 import { ZoneLocation, IncidentReport, UserProfile, NavTab } from '../types';
 import { nextService } from '../data/schedule';
+import { categoryMeta } from '../lib/categoryMeta';
+import { reportStatusBadge } from '../lib/reportStatusMeta';
+import { BrandLogo } from './BrandLogo';
 
 interface HomeScreenProps {
   currentZone: ZoneLocation;
   reports: IncidentReport[];
   profile: UserProfile;
   onNavigate: (tab: NavTab) => void;
-  onSelectZone: (zone: ZoneLocation) => void;
+  onOpenGreenPoints: () => void;
+  onOpenReportHistory: () => void;
   onToggleReminder: (zone: ZoneLocation) => void;
   onExportSchedule: (zone: ZoneLocation) => void;
   isReminderActive: boolean;
-  onOpenReportModal: () => void;
+}
+
+interface Shortcut {
+  id: string;
+  title: string;
+  desc: string;
+  Icon: LucideIcon;
+  color: string;
+  onClick: () => void;
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
@@ -34,289 +42,205 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   reports,
   profile,
   onNavigate,
+  onOpenGreenPoints,
+  onOpenReportHistory,
   onToggleReminder,
   onExportSchedule,
   isReminderActive,
 }) => {
   const activeReports = reports.filter((r) => r.status !== 'resuelto');
+  const firstName = profile.name.split(' ')[0] || 'vecina/o';
+
+  // Estado, etiqueta y valor de la pastilla salen de nextService (zone.status es estático).
   const service = nextService(currentZone);
+  const isGreenPoint = currentZone.type === 'Punto Verde';
+  const isLive = service.state === 'en-curso';
+  const statusText = isGreenPoint ? (isLive ? 'Abierto' : 'Cerrado') : isLive ? 'En camino' : 'Programado';
+  const pillOverline = isGreenPoint
+    ? isLive ? `Hasta las ${service.closesAt}` : 'Próxima apertura'
+    : isLive ? 'Ahora' : service.state === 'hoy' ? 'Hoy' : 'Próxima';
+
+  const greenPoints = categoryMeta['puntos-verdes'];
+  const shortcuts: Shortcut[] = [
+    { id: 'mapa', title: 'Mapa en vivo', desc: 'Ubicá camiones, zonas y Puntos Verdes', Icon: MapPin, color: 'var(--color-brand-600)', onClick: () => onNavigate('mapa') },
+    { id: 'reportar', title: 'Reportar reclamo', desc: 'Microbasurales, ramas o contenedores', Icon: Megaphone, color: 'var(--color-brand-600)', onClick: () => onNavigate('reportar') },
+    { id: 'horarios', title: 'Horarios', desc: 'Turnos de mañana, tarde y noche', Icon: CalendarDays, color: 'var(--color-brand-600)', onClick: () => onNavigate('horarios') },
+    { id: 'reciclaje', title: greenPoints.label, desc: 'Plástico, cartón, vidrio, latas y pilas', Icon: greenPoints.Icon, color: `var(--color-${greenPoints.colorToken})`, onClick: onOpenGreenPoints },
+  ];
+
+  const guide = [
+    { meta: categoryMeta['residuos-comunes'], title: 'Bolsa negra · Residuos comunes', desc: 'Restos de comida, pañales y envoltorios sucios. Sacala en el horario de tu zona.' },
+    { meta: categoryMeta.reciclables, title: 'Bolsa verde · Reciclables', desc: 'Plástico seco, cartón limpio, latas y vidrio. Llevala a un Punto Verde.' },
+  ];
 
   return (
-    <div id="home-screen" className="flex-1 w-full max-w-2xl mx-auto px-4 pt-4 pb-24 flex flex-col gap-5">
-      {/* Welcome Banner */}
-      <div className="flex items-center justify-between">
-        <div>
-          <span className="text-xs font-bold text-brand-600 uppercase tracking-wider">
-            Municipalidad de Corrientes
-          </span>
-          <h1 className="font-display text-2xl font-extrabold text-ink tracking-tight">
-            Hola, {profile.name || 'Vecino'} 👋
-          </h1>
-          <div className="flex items-center gap-1 text-xs text-ink-muted mt-0.5">
-            <MapPin className="w-3.5 h-3.5 text-brand-600" />
-            <span>Zona seleccionada: <strong className="text-ink">{currentZone.name}</strong></span>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Hero Card - Next Collection Countdown */}
-      <div
-        id="hero-collection-card"
-        className="relative overflow-hidden bg-brand-700 text-white rounded-3xl p-5 sm:p-6 shadow-elev-2"
-      >
-        {/* Subtle decorative circles */}
-        <div className="absolute -right-8 -bottom-8 w-40 h-40 bg-white/10 rounded-full blur-xl pointer-events-none" />
-
-        <div className="relative z-10 flex flex-col gap-4">
-          <div className="flex items-start justify-between">
-            <div className="flex flex-col">
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-bold w-fit">
-                <span className="w-2 h-2 bg-brand-accent rounded-full animate-ping" />
-                {currentZone.status}
-              </span>
-              <h2 className="font-display text-xl sm:text-2xl font-extrabold mt-2 leading-tight">
-                Próxima Recolección
-              </h2>
-              <p className="text-xs sm:text-sm text-white/90">
-                {currentZone.type} en {currentZone.name}
-              </p>
-            </div>
-
-            {/* Countdown Pill */}
-            <div className="bg-surface-card text-brand-600 px-3.5 py-2 rounded-2xl shadow-lg flex flex-col items-center justify-center font-extrabold">
-              <span className="text-xs uppercase tracking-wider text-ink-muted">
-                {service.state === 'en-curso' ? 'Ahora' : 'Próxima'}
-              </span>
-              <span className="text-xl sm:text-2xl leading-none font-extrabold">{service.label}</span>
-            </div>
-          </div>
-
-          {/* Time & Frequency Box */}
-          <div className="grid grid-cols-2 gap-2 bg-black/15 backdrop-blur-sm rounded-2xl p-3 border border-white/10 text-xs">
-            <div className="flex flex-col">
-              <span className="text-white/70 font-medium">Ventana Horaria</span>
-              <span className="font-bold text-sm text-white">{currentZone.timeWindow}</span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-white/70 font-medium">Días de Servicio</span>
-              <span className="font-bold text-sm text-white">{currentZone.frequency}</span>
-            </div>
-          </div>
-
-          {/* Quick Action Buttons */}
-          <div className="flex items-center gap-2 pt-1">
-            <button
-              id="btn-home-reminder"
-              onClick={() => onToggleReminder(currentZone)}
-              className={`flex-1 h-12 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all shadow-md active:scale-98 ${
-                isReminderActive
-                  ? 'bg-surface-card text-brand-600'
-                  : 'bg-brand-accent text-ink hover:bg-brand-soft'
-              }`}
-            >
-              {isReminderActive ? (
-                <>
-                  <CheckCircle2 className="w-4 h-4" />
-                  Alarma Activada
-                </>
-              ) : (
-                <>
-                  <Bell className="w-4 h-4" />
-                  Activar Recordatorio
-                </>
-              )}
-            </button>
-
-            <button
-              id="btn-home-export-drive"
-              onClick={() => onExportSchedule(currentZone)}
-              title="Descargar horario"
-              className="h-12 px-3.5 bg-white/20 hover:bg-white/30 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 backdrop-blur-md transition-colors"
-            >
-              <DownloadCloud className="w-4 h-4" />
-              <span className="hidden sm:inline">Descargar horario</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Bento Grid: Quick Action Shortcuts */}
+    <div id="home-screen" className="flex-1 w-full max-w-2xl mx-auto px-4 pt-4 pb-24 flex flex-col gap-6">
+      {/* Saludo */}
       <div>
-        <h3 className="text-sm font-bold text-ink mb-3 uppercase tracking-wider">
-          Accesos Rápidos
-        </h3>
-        <div className="grid grid-cols-2 gap-3">
-          {/* Action 1: Map */}
-          <div
-            id="card-action-mapa"
-            onClick={() => onNavigate('mapa')}
-            className="bg-surface-card p-4 rounded-2xl border border-line shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group active:scale-98"
-          >
-            <div className="w-10 h-10 rounded-xl bg-brand-soft text-brand-600 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <MapPin className="w-5 h-5" />
-            </div>
-            <div className="mt-4">
-              <h4 className="font-bold text-sm text-ink group-hover:text-brand-600 transition-colors">
-                Mapa en Vivo
-              </h4>
-              <p className="text-xs text-ink-muted mt-0.5">
-                Ubica camiones, zonas y puntos verdes
-              </p>
-            </div>
-            <div className="flex items-center text-xs font-bold text-brand-600 mt-2 gap-1">
-              <span>Explorar</span>
-              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-
-          {/* Action 2: Report */}
-          <div
-            id="card-action-reportar"
-            onClick={() => onNavigate('reportar')}
-            className="bg-surface-card p-4 rounded-2xl border border-line shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group active:scale-98"
-          >
-            <div className="w-10 h-10 rounded-xl bg-danger/10 text-danger flex items-center justify-center group-hover:scale-110 transition-transform">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-            <div className="mt-4">
-              <h4 className="font-bold text-sm text-ink group-hover:text-danger transition-colors">
-                Reportar Reclamo
-              </h4>
-              <p className="text-xs text-ink-muted mt-0.5">
-                Microbasurales, ramas o contenedores
-              </p>
-            </div>
-            <div className="flex items-center text-xs font-bold text-danger mt-2 gap-1">
-              <span>Nuevo Reporte</span>
-              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-
-          {/* Action 3: Schedules */}
-          <div
-            id="card-action-horarios"
-            onClick={() => onNavigate('horarios')}
-            className="bg-surface-card p-4 rounded-2xl border border-line shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group active:scale-98"
-          >
-            <div className="w-10 h-10 rounded-xl bg-success/10 text-success flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Calendar className="w-5 h-5" />
-            </div>
-            <div className="mt-4">
-              <h4 className="font-bold text-sm text-ink group-hover:text-success transition-colors">
-                Guía de Horarios
-              </h4>
-              <p className="text-xs text-ink-muted mt-0.5">
-                Turnos diurnos, nocturnos y especiales
-              </p>
-            </div>
-            <div className="flex items-center text-xs font-bold text-success mt-2 gap-1">
-              <span>Consultar</span>
-              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-
-          {/* Action 4: Recycling Points */}
-          <div
-            id="card-action-reciclaje"
-            onClick={() => onNavigate('mapa')}
-            className="bg-surface-card p-4 rounded-2xl border border-line shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group active:scale-98"
-          >
-            <div className="w-10 h-10 rounded-xl bg-info/10 text-info flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Recycle className="w-5 h-5" />
-            </div>
-            <div className="mt-4">
-              <h4 className="font-bold text-sm text-ink group-hover:text-info transition-colors">
-                Puntos Verdes
-              </h4>
-              <p className="text-xs text-ink-muted mt-0.5">
-                Plásticos, vidrios, cartones y pilas
-              </p>
-            </div>
-            <div className="flex items-center text-xs font-bold text-info mt-2 gap-1">
-              <span>Ver Ubicaciones</span>
-              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-        </div>
+        <span className="text-xs font-semibold text-brand-600 uppercase tracking-wider">
+          Municipalidad de Corrientes
+        </span>
+        <h1 className="font-display text-[26px] leading-8 font-extrabold text-ink">Hola, {firstName}</h1>
+        <p id="home-profile-address" className="flex items-center gap-1 text-sm text-ink-muted mt-0.5">
+          <MapPin className="w-4 h-4 text-brand-600 shrink-0" />
+          <span>
+            {profile.address} · {profile.neighborhood}
+          </span>
+        </p>
       </div>
 
-      {/* Active Reports Status Snippet (if any) */}
-      {activeReports.length > 0 && (
-        <div className="bg-surface-card rounded-2xl border border-line p-4 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 bg-amber-500 rounded-full animate-ping" />
-              <h3 className="font-bold text-sm text-ink">
-                Tus Reclamos en Gestión ({activeReports.length})
-              </h3>
-            </div>
+      {/* Hero: próxima recolección */}
+      <section
+        id="hero-collection-card"
+        aria-labelledby="hero-title"
+        className="bg-brand-700 text-white rounded-sheet p-5 shadow-elev-2 flex flex-col gap-4"
+      >
+        <div>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white/15 rounded-full text-xs font-semibold">
+            <span className={`w-2 h-2 rounded-full ${isLive ? 'bg-brand-accent' : 'bg-white/60'}`} aria-hidden="true" />
+            {statusText}
+          </span>
+          <h2 id="hero-title" className="font-display text-xl leading-[26px] font-bold mt-3">
+            {isGreenPoint ? 'Horario de atención' : 'Próxima recolección'}
+          </h2>
+          <p className="text-sm text-white/90">
+            {isGreenPoint ? currentZone.name : `${categoryMeta[currentZone.category].label} en ${currentZone.name}`}
+          </p>
+        </div>
+
+        <div id="hero-countdown" className="bg-surface-card text-brand-700 rounded-card px-4 py-3">
+          <span className="block text-xs font-semibold uppercase tracking-wider text-ink-muted">{pillOverline}</span>
+          <span className="block font-display text-xl leading-[26px] font-extrabold tabular-nums">{service.label}</span>
+        </div>
+
+        <dl className="grid grid-cols-2 gap-2">
+          <div className="bg-white/10 rounded-control px-3 py-2">
+            <dt className="text-xs text-white/80">Horario</dt>
+            <dd className="text-sm font-semibold tabular-nums">{currentZone.timeWindow}</dd>
+          </div>
+          <div className="bg-white/10 rounded-control px-3 py-2">
+            <dt className="text-xs text-white/80">Días</dt>
+            <dd className="text-sm font-semibold">{currentZone.frequency}</dd>
+          </div>
+        </dl>
+
+        <div className="flex items-center gap-2">
+          <button
+            id="btn-home-reminder"
+            onClick={() => onToggleReminder(currentZone)}
+            aria-pressed={isReminderActive}
+            className="flex-1 h-12 rounded-control bg-surface-card text-brand-700 text-sm font-semibold inline-flex items-center justify-center gap-2 hover:bg-brand-soft transition-colors focus-visible:outline-white!"
+          >
+            {isReminderActive ? <BellRing className="w-5 h-5" /> : <Bell className="w-5 h-5" />}
+            {isReminderActive ? 'Aviso activado' : 'Avisame'}
+          </button>
+          <button
+            id="btn-home-download-schedule"
+            onClick={() => onExportSchedule(currentZone)}
+            aria-label="Descargar horario"
+            className="h-12 px-4 rounded-control bg-brand-soft text-brand-700 text-sm font-semibold inline-flex items-center justify-center gap-2 hover:bg-surface-card transition-colors focus-visible:outline-white!"
+          >
+            <Download className="w-5 h-5" />
+            <span>
+              Descargar<span className="hidden sm:inline"> horario</span>
+            </span>
+          </button>
+        </div>
+      </section>
+
+      {/* Accesos rápidos */}
+      <section aria-labelledby="shortcuts-title">
+        <h2 id="shortcuts-title" className="font-display text-[17px] leading-6 font-bold text-ink mb-3">
+          Accesos rápidos
+        </h2>
+        <div className="grid grid-cols-2 gap-3">
+          {shortcuts.map(({ id, title, desc, Icon, color, onClick }) => (
             <button
-              onClick={() => onNavigate('reportar')}
-              className="text-xs font-bold text-brand-600 hover:underline"
+              key={id}
+              id={`card-action-${id}`}
+              onClick={onClick}
+              className="group bg-surface-card p-4 rounded-card border border-line shadow-elev-1 hover:border-line-strong transition-colors text-left flex flex-col gap-3"
+            >
+              <span className="flex items-center justify-between">
+                <span className="w-10 h-10 rounded-control bg-brand-soft flex items-center justify-center" style={{ color }}>
+                  <Icon className="w-5 h-5" />
+                </span>
+                <ArrowRight className="w-4 h-4 text-ink-muted group-hover:text-brand-600 transition-colors" />
+              </span>
+              <span>
+                <span className="block font-display text-base leading-6 font-bold text-ink">{title}</span>
+                <span className="block text-sm leading-5 text-ink-muted mt-0.5">{desc}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      {/* Reclamos en gestión */}
+      {activeReports.length > 0 && (
+        <section aria-labelledby="reports-title" className="bg-surface-card rounded-card border border-line p-4 shadow-elev-1">
+          <div className="flex items-center justify-between mb-3">
+            <h2 id="reports-title" className="font-display text-[17px] leading-6 font-bold text-ink">
+              Tus reclamos en gestión ({activeReports.length})
+            </h2>
+            <button
+              onClick={onOpenReportHistory}
+              className="text-sm font-semibold text-brand-600 hover:underline px-1 py-2"
             >
               Ver todos
             </button>
           </div>
 
-          <div className="flex flex-col gap-2">
+          <ul className="flex flex-col gap-2">
             {activeReports.slice(0, 2).map((r) => (
-              <div
-                key={r.id}
-                onClick={() => onNavigate('reportar')}
-                className="flex items-center justify-between p-2.5 rounded-xl bg-surface border border-line hover:bg-surface-muted cursor-pointer transition-colors"
-              >
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold text-ink">
-                    Ticket #{r.code} - {r.categoryLabel}
+              <li key={r.id}>
+                <button
+                  onClick={onOpenReportHistory}
+                  className="w-full flex items-center gap-3 p-3 rounded-control bg-surface border border-line hover:bg-surface-muted transition-colors text-left"
+                >
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-semibold text-ink truncate">
+                      #{r.code} · {r.categoryLabel}
+                    </span>
+                    <span className="block text-xs text-ink-muted truncate">{r.address}</span>
                   </span>
-                  <span className="text-xs text-ink-muted truncate max-w-[200px]">
-                    {r.address}
+                  <span className={`shrink-0 px-2.5 py-1 rounded-full text-xs font-semibold ${reportStatusBadge[r.status]}`}>
+                    {r.statusLabel}
                   </span>
-                </div>
-                <span className="px-2 py-1 bg-amber-100 text-amber-800 text-xs font-bold rounded-md">
-                  {r.statusLabel}
-                </span>
-              </div>
+                  <ChevronRight className="w-4 h-4 text-ink-muted shrink-0" />
+                </button>
+              </li>
             ))}
-          </div>
-        </div>
+          </ul>
+        </section>
       )}
 
-      {/* Eco Separation Guide / Tips */}
-      <div className="bg-surface rounded-2xl border border-line p-4.5 flex flex-col gap-3">
-        <div className="flex items-center gap-2 text-brand-600">
-          <Sparkles className="w-5 h-5" />
-          <h3 className="font-bold text-sm text-ink">
-            Guía Ciudadana de Separación en Corrientes
-          </h3>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
-          <div className="bg-surface-card p-3 rounded-xl border border-line flex items-start gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-zinc-900 text-white flex items-center justify-center shrink-0 font-bold">
-              ⬛
-            </div>
-            <div className="flex flex-col">
-              <span className="font-bold text-ink">Bolsa Negra (Húmedos)</span>
-              <span className="text-ink-muted text-xs mt-0.5">
-                Restos de comida, pañales, envoltorios sucios y residuos no reciclables.
+      {/* Guía de separación */}
+      <section aria-labelledby="guide-title" className="flex flex-col gap-3">
+        <h2 id="guide-title" className="font-display text-[17px] leading-6 font-bold text-ink">
+          Cómo separar tus residuos
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {guide.map(({ meta, title, desc }) => (
+            <div key={title} className="bg-surface-card p-3 rounded-card border border-line flex items-start gap-3">
+              <span
+                className="w-9 h-9 rounded-control text-white flex items-center justify-center shrink-0"
+                style={{ backgroundColor: `var(--color-${meta.colorToken})` }}
+                aria-hidden="true"
+              >
+                <meta.Icon className="w-5 h-5" />
+              </span>
+              <span className="flex flex-col">
+                <span className="text-sm font-semibold text-ink">{title}</span>
+                <span className="text-sm leading-5 text-ink-muted mt-0.5">{desc}</span>
               </span>
             </div>
-          </div>
-
-          <div className="bg-surface-card p-3 rounded-xl border border-line flex items-start gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-brand-600 text-white flex items-center justify-center shrink-0 font-bold">
-              🟩
-            </div>
-            <div className="flex flex-col">
-              <span className="font-bold text-ink">Bolsa Verde / Puntos Verdes</span>
-              <span className="text-ink-muted text-xs mt-0.5">
-                Botellas plásticas secas, cartones limpios, latas de aluminio y vidrio.
-              </span>
-            </div>
-          </div>
+          ))}
         </div>
-      </div>
+      </section>
+
+      {/* Firma institucional (§3.3) */}
+      <BrandLogo variant="municipalidad-h" className="block w-[168px] h-auto mx-auto mt-2" />
     </div>
   );
 };
