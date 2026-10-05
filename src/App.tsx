@@ -40,6 +40,12 @@ export default function App() {
     if (activeTab !== 'reportar') setReportView('nuevo');
   }, [activeTab]);
 
+  // Horarios abre el mapa con la hoja de la zona abierta; al salir del mapa vuelve a cerrada.
+  const [mapSheetOpen, setMapSheetOpen] = useState(false);
+  useEffect(() => {
+    if (activeTab !== 'mapa') setMapSheetOpen(false);
+  }, [activeTab]);
+
   // Filtro único de zonas: lo leen las píldoras del mapa, FilterModal y Horarios.
   // Un resultado vacío queda vacío (las pantallas muestran "Limpiar filtros").
   const [filters, setFilters] = useState<ZoneFilters>(DEFAULT_FILTERS);
@@ -222,6 +228,7 @@ export default function App() {
             onShare={(zone) => setShareZone(zone)}
             onToggleReminder={handleToggleReminder}
             activeReminders={activeReminders}
+            sheetOpenOnMount={mapSheetOpen}
           />
         )}
 
@@ -254,6 +261,7 @@ export default function App() {
             activeFilterCount={activeFilterCount}
             onSelectZone={(zone) => {
               selectZone(zone);
+              setMapSheetOpen(true);
               setActiveTab('mapa');
             }}
             onOpenRouteDetails={(zone) => setModalRouteZone(zone)}
