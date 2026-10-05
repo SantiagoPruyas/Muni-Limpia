@@ -46,7 +46,7 @@ export const RouteDetailsModal: React.FC<RouteDetailsModalProps> = ({
               </h2>
               <p className="flex items-center gap-1 text-sm text-ink-muted mt-0.5">
                 <MapPin className="w-4 h-4 text-brand-600 shrink-0" aria-hidden="true" />
-                {zone.address} · {zone.neighborhood}
+                {zone.address === zone.name ? zone.neighborhood : `${zone.address} · ${zone.neighborhood}`}
               </p>
             </div>
 
