@@ -49,7 +49,7 @@ export const ToastContainer: React.FC<ToastProps> = ({ toasts, onDismiss }) => {
             </div>
   
             <div className="flex-1 flex flex-col">
-              <span className="text-xs font-bold text-ink">{t.title}</span>
+              <span className="text-xs font-semibold text-ink">{t.title}</span>
               {t.message && (
                 <span className="text-xs text-ink-muted mt-0.5 leading-snug">
                   {t.message}
