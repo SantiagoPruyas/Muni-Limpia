@@ -65,10 +65,18 @@ export default function App() {
     if (activeTab !== 'reportar') setReportView('nuevo');
   }, [activeTab]);
 
-  // Horarios abre el mapa con la hoja de la zona abierta; al salir del mapa vuelve a cerrada.
-  const [mapSheetOpen, setMapSheetOpen] = useState(false);
+  // Cada pestaña abre arriba (si no, Inicio → historial abre a mitad de la lista).
+  // Con llaves: en Chromium reciente scrollTo devuelve una Promise y React la tomaría como cleanup.
   useEffect(() => {
-    if (activeTab !== 'mapa') setMapSheetOpen(false);
+    window.scrollTo(0, 0);
+  }, [activeTab]);
+
+  // Horarios y las notificaciones piden abrir la hoja: cada pedido suma uno, así se reabre
+  // aunque la zona sea la misma. Al salir del mapa vuelve a 0 (la nav abre el mapa sin hoja).
+  const [mapSheetRequest, setMapSheetRequest] = useState(0);
+  const requestMapSheet = () => setMapSheetRequest((n) => n + 1);
+  useEffect(() => {
+    if (activeTab !== 'mapa') setMapSheetRequest(0);
   }, [activeTab]);
 
   // Filtro único de zonas: lo leen las píldoras del mapa, FilterModal y Horarios.
@@ -83,9 +91,10 @@ export default function App() {
   const [activeReminders, setActiveReminders] = useState<string[]>(INITIAL_REMINDERS);
 
   // Seleccionar una zona que el filtro oculta (voz, notificaciones) limpia el filtro.
+  // Decide con el filtro vigente, no con el del render que creó el callback (la voz tarda 1,5 s).
   const selectZone = (zone: ZoneLocation) => {
     setSelectedZone(zone);
-    if (!filteredZones.some((z) => z.id === zone.id)) clearFilters();
+    setFilters((prev) => (matchesFilters(zone, prev) ? prev : DEFAULT_FILTERS));
   };
 
   // Citizen Reports & Notifications State
@@ -212,7 +221,7 @@ export default function App() {
     const zone = CORRIENTES_ZONES.find((z) => z.id === notification.zoneId);
     if (zone) {
       selectZone(zone);
-      setMapSheetOpen(true);
+      requestMapSheet();
       setActiveTab('mapa');
     }
   };
@@ -266,7 +275,7 @@ export default function App() {
               onShare={(zone) => setShareZone(zone)}
               onToggleReminder={handleToggleReminder}
               activeReminders={activeReminders}
-              sheetOpenOnMount={mapSheetOpen}
+              sheetRequest={mapSheetRequest}
             />
           )}
   
@@ -299,7 +308,7 @@ export default function App() {
               activeFilterCount={activeFilterCount}
               onSelectZone={(zone) => {
                 selectZone(zone);
-                setMapSheetOpen(true);
+                requestMapSheet();
                 setActiveTab('mapa');
               }}
               onOpenRouteDetails={(zone) => setModalRouteZone(zone)}

@@ -84,6 +84,10 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({
   const photoButtonRef = useRef<HTMLButtonElement>(null);
   const focusPhotoButton = useRef(false);
 
+  // Si se sale de Reportar durante "Enviando…", el envío simulado se cancela.
+  const submitTimerRef = useRef<number | undefined>(undefined);
+  useEffect(() => () => clearTimeout(submitTimerRef.current), []);
+
   useEffect(() => {
     if (!focusPhotoButton.current) return;
     focusPhotoButton.current = false;
@@ -169,7 +173,7 @@ export const ReportScreen: React.FC<ReportScreenProps> = ({
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
+    submitTimerRef.current = window.setTimeout(() => {
       const created = onSubmitReport({
         category,
         categoryLabel: REPORT_CATEGORIES.find((c) => c.id === category)?.label ?? 'Reclamo',

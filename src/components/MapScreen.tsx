@@ -39,8 +39,8 @@ interface MapScreenProps {
   onShare: (zone: ZoneLocation) => void;
   onToggleReminder: (zone: ZoneLocation) => void;
   activeReminders: string[];
-  /** Abre la hoja de `selectedZone` al montar o al pasar a true (p.ej. desde Horarios o una notificación). */
-  sheetOpenOnMount?: boolean;
+  /** Pedidos de App para abrir la hoja de `selectedZone` (Horarios, notificaciones): cada valor nuevo > 0 la abre. */
+  sheetRequest?: number;
 }
 
 // Coordinates of Corrientes Collection Route (Calle Junín and Casco Histórico)
@@ -175,20 +175,22 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   onShare,
   onToggleReminder,
   activeReminders,
-  sheetOpenOnMount,
+  sheetRequest = 0,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [showLiveTruck, setShowLiveTruck] = useState(true);
   const [mapLayerType, setMapLayerType] = useState<'streets' | 'satellite'>('streets');
-  const [userGpsLocation, setUserGpsLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
   const [showAllLabels, setShowAllLabels] = useState(false);
   const [showHint, setShowHint] = useState(!mapHintDismissed);
 
   // Cerrada por defecto para ver las calles sin obstrucción
-  const [isSheetOpen, setIsSheetOpen] = useState(sheetOpenOnMount ?? false);
+  const [isSheetOpen, setIsSheetOpen] = useState(sheetRequest > 0);
+  // Un pin activado con teclado se recrea al seleccionarse: el foco pasa a la hoja.
+  const focusSheetOnOpen = useRef(false);
+  const voiceTimerRef = useRef<number | undefined>(undefined);
 
   // Map DOM and Leaflet References
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -251,11 +253,13 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     map.on('dragstart zoomstart', dismissHint);
     map.on('zoomend', () => setShowAllLabels(map.getZoom() >= LABEL_ZOOM));
 
-    setTimeout(() => {
+    // Se cancela al desmontar: sobre un mapa ya removido, Leaflet tira `_leaflet_pos` de undefined.
+    const resizeTimer = setTimeout(() => {
       map.invalidateSize();
     }, 200);
 
     return () => {
+      clearTimeout(resizeTimer);
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
@@ -298,22 +302,33 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       });
 
       // Seleccionar abre la hoja; el flyTo lo hace un único effect.
-      marker.on('click', (e) => {
-        L.DomEvent.stopPropagation(e);
+      const select = (viaKeyboard: boolean) => {
+        focusSheetOnOpen.current = viaKeyboard;
         onSelectZone(zone);
         setIsSheetOpen(true);
+      };
+      marker.on('click', (e) => {
+        L.DomEvent.stopPropagation(e);
+        select(false);
+      });
+      // Leaflet hace el pin focusable (role="button") pero no lo activa con Enter ni Espacio.
+      marker.on('keypress', (e: L.LeafletKeyboardEvent) => {
+        if (e.originalEvent.key !== 'Enter' && e.originalEvent.key !== ' ') return;
+        e.originalEvent.preventDefault();
+        select(true);
       });
 
       markersLayerGroupRef.current?.addLayer(marker);
     });
   }, [zones, selectedZone?.id, showSheet, showAllLabels, isMapReady]);
 
-  // Con el mapa ya montado (p.ej. una notificación), seleccionar otra zona o que App pida la hoja la abre.
+  // Con el mapa ya montado (p.ej. una notificación), seleccionar otra zona o un pedido nuevo de App la abre,
+  // aunque la zona sea la misma que ya estaba seleccionada.
   useEffect(() => {
     const changed = prevSelectedIdRef.current !== selectedZone?.id;
     prevSelectedIdRef.current = selectedZone?.id;
-    if (changed || sheetOpenOnMount) setIsSheetOpen(true);
-  }, [selectedZone?.id, sheetOpenOnMount]);
+    if (changed || sheetRequest > 0) setIsSheetOpen(true);
+  }, [selectedZone?.id, sheetRequest]);
 
   // Si el filtro oculta la zona de la hoja, la hoja se cierra (y no reaparece al limpiar).
   useEffect(() => {
@@ -323,6 +338,13 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   useEffect(() => {
     if (showSheet) dismissHint();
   }, [showSheet]);
+
+  useEffect(() => {
+    if (!showSheet || !focusSheetOnOpen.current) return;
+    focusSheetOnOpen.current = false;
+    // preventScroll: el contenedor del mapa tiene overflow hidden y el foco lo desplazaría.
+    sheetRef.current?.querySelector<HTMLElement>('#map-zone-sheet')?.focus({ preventScroll: true });
+  }, [showSheet, selectedZone?.id]);
 
   // Un solo flyTo por selección, con el pin centrado en el área visible arriba de la hoja.
   useEffect(() => {
@@ -407,10 +429,13 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     };
   }, [showLiveTruck, showRoute, isMapReady]);
 
-  // Voice search simulation
+  // Voice search simulation. Si se sale del mapa antes de que "escuche", no selecciona nada.
+  useEffect(() => () => clearTimeout(voiceTimerRef.current), []);
+
   const handleVoiceSearch = () => {
     setIsListening(true);
-    setTimeout(() => {
+    clearTimeout(voiceTimerRef.current);
+    voiceTimerRef.current = window.setTimeout(() => {
       setIsListening(false);
       setSearchQuery('Calle Junín 1200, Corrientes');
       // Busca en todas las zonas: si el filtro la oculta, App lo limpia al seleccionarla.
@@ -425,7 +450,6 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   // Center on user GPS
   const handleLocateUser = () => {
     const flyToUser = (coords: { lat: number; lng: number }) => {
-      setUserGpsLocation(coords);
       mapInstanceRef.current?.flyTo([coords.lat, coords.lng], SELECT_ZOOM);
     };
     const fallback = { lat: CITY_CENTER[0], lng: CITY_CENTER[1] };
