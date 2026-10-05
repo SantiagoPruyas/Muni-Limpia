@@ -122,7 +122,7 @@ export const MapZoneSheet: React.FC<MapZoneSheetProps> = ({
               id="btn-avisarme"
               onClick={() => onToggleReminder(zone)}
               aria-pressed={isReminderActive}
-              className={`flex-1 h-12 rounded-control font-semibold text-sm flex items-center justify-center gap-2 transition-colors ${
+              className={`flex-1 h-12 rounded-control font-semibold text-sm flex items-center justify-center gap-1.5 transition-colors ${
                 isReminderActive
                   ? 'bg-brand-soft text-brand-700 border border-brand-500'
                   : 'bg-brand-600 hover:bg-brand-700 text-white'
@@ -134,7 +134,7 @@ export const MapZoneSheet: React.FC<MapZoneSheetProps> = ({
             <button
               id="btn-ver-recorrido"
               onClick={() => onOpenRouteDetails(zone)}
-              className="h-12 px-4 rounded-control bg-surface-muted hover:bg-brand-soft text-brand-600 font-semibold text-sm flex items-center gap-2 transition-colors"
+              className="h-12 px-3 rounded-control bg-surface-muted hover:bg-brand-soft text-brand-600 font-semibold text-sm flex items-center gap-1.5 transition-colors"
             >
               <Route className="w-4 h-4" />
               Ver recorrido
