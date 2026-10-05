@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import {
   Search,
   Mic,
@@ -51,6 +52,25 @@ const JUNIN_ROUTE_COORDS: [number, number][] = [
   [-27.4760, -58.8280], // Av. 3 de Abril & Santa Fe
 ];
 
+const TILE_LAYERS: Record<'streets' | 'satellite' | 'vector', { url: string; subdomains: string; attribution: string }> = {
+  // Esri World Street Map - no API key required (CARTO/OSM block localhost)
+  streets: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    subdomains: '',
+    attribution: 'Tiles &copy; Esri',
+  },
+  satellite: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    subdomains: '',
+    attribution: 'Tiles &copy; Esri',
+  },
+  vector: {
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    subdomains: 'abc',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  },
+};
+
 export const MapScreen: React.FC<MapScreenProps> = ({
   zones,
   selectedZone,
@@ -83,10 +103,10 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const truckMarkerRef = useRef<L.Marker | null>(null);
 
   // Filtered zones
-  const filteredZones = zones.filter((zone) => {
-    if (activeFilter === 'todos') return true;
-    return zone.category === activeFilter;
-  });
+  const filteredZones = useMemo(
+    () => zones.filter((zone) => activeFilter === 'todos' || zone.category === activeFilter),
+    [zones, activeFilter]
+  );
 
   const currentActiveZone = selectedZone || zones[0];
   const isReminderActive = currentActiveZone ? activeReminders.includes(currentActiveZone.id) : false;
@@ -108,21 +128,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       center: [defaultLat, defaultLng],
       zoom: 15,
       zoomControl: false,
-      attributionControl: false,
     });
-
-    // Add Tile Layer (CartoDB Voyager - high contrast, clear street names)
-    const initialTileUrl =
-      mapLayerType === 'satellite'
-        ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-        : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-
-    const tileLayer = L.tileLayer(initialTileUrl, {
-      maxZoom: 19,
-      subdomains: 'abcd',
-    }).addTo(map);
-
-    tileLayerRef.current = tileLayer;
 
     // Layer group for pins
     const markersGroup = L.layerGroup().addTo(map);
@@ -159,22 +165,18 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     };
   }, []);
 
-  // Update Tile Layer when layer type changes
+  // Set Tile Layer on mount and when layer type changes
   useEffect(() => {
-    if (!mapInstanceRef.current || !tileLayerRef.current) return;
+    if (!mapInstanceRef.current) return;
 
-    mapInstanceRef.current.removeLayer(tileLayerRef.current);
-
-    let url = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-    if (mapLayerType === 'satellite') {
-      url = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-    } else if (mapLayerType === 'vector') {
-      url = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    if (tileLayerRef.current) {
+      mapInstanceRef.current.removeLayer(tileLayerRef.current);
     }
 
-    const newLayer = L.tileLayer(url, { maxZoom: 19, subdomains: 'abcd' }).addTo(mapInstanceRef.current);
+    const { url, subdomains, attribution } = TILE_LAYERS[mapLayerType];
+    const newLayer = L.tileLayer(url, { maxZoom: 19, subdomains, attribution }).addTo(mapInstanceRef.current);
     tileLayerRef.current = newLayer;
-  }, [mapLayerType]);
+  }, [mapLayerType, isMapReady]);
 
   // Update Markers whenever filtered zones or selected zone changes
   useEffect(() => {
