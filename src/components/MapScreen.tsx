@@ -52,7 +52,7 @@ const JUNIN_ROUTE_COORDS: [number, number][] = [
   [-27.4760, -58.8280], // Av. 3 de Abril & Santa Fe
 ];
 
-const TILE_LAYERS: Record<'streets' | 'satellite' | 'vector', { url: string; subdomains: string; attribution: string }> = {
+const TILE_LAYERS: Record<'streets' | 'satellite', { url: string; subdomains: string; attribution: string }> = {
   // Esri World Street Map - no API key required (CARTO/OSM block localhost)
   streets: {
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
@@ -63,11 +63,6 @@ const TILE_LAYERS: Record<'streets' | 'satellite' | 'vector', { url: string; sub
     url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     subdomains: '',
     attribution: 'Tiles &copy; Esri',
-  },
-  vector: {
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    subdomains: 'abc',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
   },
 };
 
@@ -85,7 +80,7 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const [activeFilter, setActiveFilter] = useState<FilterCategory>('todos');
   const [isListening, setIsListening] = useState(false);
   const [showLiveTruck, setShowLiveTruck] = useState(true);
-  const [mapLayerType, setMapLayerType] = useState<'streets' | 'satellite' | 'vector'>('streets');
+  const [mapLayerType, setMapLayerType] = useState<'streets' | 'satellite'>('streets');
   const [userGpsLocation, setUserGpsLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);

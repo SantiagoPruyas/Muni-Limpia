@@ -1,29 +1,27 @@
 import React, { useState } from 'react';
 import { X, User, MapPin, Bell, Cloud, Save, CheckCircle2, Shield, Heart } from 'lucide-react';
 import { CORRIENTES_NEIGHBORHOODS } from '../data/corrientesData';
+import { UserProfile } from '../types';
 
 interface ProfileModalProps {
-  userAddress: string;
-  onUpdateAddress: (newAddress: string) => void;
+  profile: UserProfile;
+  onSaveProfile: (profile: UserProfile) => void;
   onClose: () => void;
-  onShowToast: (message: string, type?: 'success' | 'info') => void;
 }
 
 export const ProfileModal: React.FC<ProfileModalProps> = ({
-  userAddress,
-  onUpdateAddress,
+  profile,
+  onSaveProfile,
   onClose,
-  onShowToast
 }) => {
-  const [addressInput, setAddressInput] = useState(userAddress);
+  const [addressInput, setAddressInput] = useState(profile.address);
   const [notifSound, setNotifSound] = useState(true);
   const [driveAutoSync, setDriveAutoSync] = useState(true);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!addressInput.trim()) return;
-    onUpdateAddress(addressInput);
-    onShowToast('Dirección y preferencias guardadas', 'success');
+    onSaveProfile({ ...profile, address: addressInput });
     onClose();
   };
 

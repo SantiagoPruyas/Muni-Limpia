@@ -195,7 +195,7 @@ export default function App() {
   };
 
   // Filter apply from filter modal
-  const handleApplyFilters = (category: FilterCategory, neighborhood: string) => {
+  const handleApplyFilters = (category: FilterCategory, neighborhood: string, _shift: string) => {
     let filtered = CORRIENTES_ZONES;
     if (category !== 'todos') {
       filtered = filtered.filter((z) => z.category === category);
