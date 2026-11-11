@@ -1,0 +1,53 @@
+{
+  "_comment": "Nombre de calle del Excel -> nombres en OpenStreetMap que también le corresponden. '*' vale para todas las zonas; 'turno-numero' solo para esa zona. Se suman a la coincidencia automática.",
+  "*": {
+    "_renombradas": "Verificado en Google Maps: Av. Centenario hoy es Av. Raúl Alfonsín (Centenario Shopping); Río Chico hoy es Av. Eva Perón.",
+    "Av. Centenario": ["Avenida Raúl Alfonsín", "Avenida Presidente Doctor Raúl Alfonsín"],
+    "Centenario": ["Avenida Raúl Alfonsín", "Avenida Presidente Doctor Raúl Alfonsín"],
+    "Rio Chico": ["Avenida Eva Perón", "Avenida Eva Perón (ex Río Chico)"],
+    "Cuarto Centenario": ["Avenida del IV Centenario"],
+    "Ex Vias": ["Ex Vias General Urquiza", "Ex Vías FFCC"],
+    "Ex Via": ["Ex Vias General Urquiza", "Ex Vías FFCC"],
+
+    "_tipeo": "Errores de tipeo del Excel, corregidos con el registro oficial de calles (Georef/INDEC) y OSM.",
+    "3 Argentos": ["Tres Sargentos"],
+    "3 Argento": ["Tres Sargentos"],
+    "Almte Brow": ["Almirante Brown"],
+    "Suezia": ["Suecia"],
+    "Piravono": ["Pirovano"],
+    "Pula Groussac": ["Paul Groussac"],
+    "Paul Gorussac": ["Paul Groussac"],
+    "Paula Graussac": ["Paul Groussac"],
+    "Rioi Marinay": ["Río Miriñay"],
+    "Lita Soto": ["Lucía Soto"],
+    "Pacaa": ["Paca-a"],
+    "Caburei": ["Cabure-í"],
+    "Horner": ["Hornero", "El Hornero"],
+    "Jose Del Giorgio": ["José Delgiorgio"],
+    "Jose Teller": ["José Thelier"],
+    "Juan de O. Gomez": ["Juan de Dios Gómez"],
+    "Francesco Luis Mansilla": ["Francesco Ruiz Mansilla"],
+    "Monte Agudo": ["Monteagudo"],
+    "Ruiz Dia Gabino": ["Gabino Ruiz Diaz"],
+    "Pedro Francisco Moralez": ["Pedro F. Moresi"],
+    "Sra Saenz Cavia": ["Sara Sáenz Cavia de Morales Torre"],
+    "Catueño": ["Pje. Catuegno"],
+    "Dr. F B de La Mareda": ["Francisco Blasco y Fernández de Moreda"],
+    "Dr. F B de la Moreda": ["Francisco Blasco y Fernández de Moreda"],
+    "Gaulegay": ["Gualeguaychú"],
+    "Cazadores": ["Avenida Cazadores Correntinos"],
+    "Vicegobernador  F de Borges": ["Vice-Gdor. Borges Saa"]
+  },
+  "nocturno-1": {
+    "Rivadavia": ["Pje. Guardiamarina José Ferré"],
+    "San Martin": ["Padre Lavagna"],
+    "Coronel Blanco": ["Pje. Juan J. Fernández Blanco"]
+  },
+  "nocturno-11": {
+    "_": "Google Maps: entre Güemes y Medrano la avenida figura como Pres. Nicolás Avellaneda; al este sigue como Perón.",
+    "Juan Domingo Perón": ["Presidente Nicolás Avellaneda"]
+  },
+  "nocturno-12": {
+    "Av. Juan Domingo Perón": ["Presidente Nicolás Avellaneda"]
+  }
+}
