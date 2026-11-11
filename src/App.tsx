@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, lazy, Suspense } from 'react';
+import { m } from 'motion/react';
 import {
   CORRIENTES_ZONES,
   INITIAL_REPORTS,
@@ -11,10 +12,11 @@ import {
   NotificationItem,
   UserProfile,
   FilterCategory,
+  ZoneFilters,
 } from './types';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
-import { MapScreen } from './components/MapScreen';
+import { resetMapHint } from './lib/mapHint';
 import { HomeScreen } from './components/HomeScreen';
 import { SchedulesScreen } from './components/SchedulesScreen';
 import { ReportScreen } from './components/ReportScreen';
@@ -24,35 +26,87 @@ import { ProfileModal } from './components/ProfileModal';
 import { FilterModal } from './components/FilterModal';
 import { ShareModal } from './components/ShareModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
-import {
-  exportScheduleToGoogleDrive,
-  exportReportToGoogleDrive,
-} from './services/driveService';
+import { DesktopPanel } from './components/DesktopPanel';
+import { downloadReceipt, downloadSchedule } from './services/downloadService';
+import { APP_COLUMN, MAP_SCREEN_HEIGHT } from './lib/layout';
+
+// Leaflet (≈43 kB gzip más su CSS) se carga recién al abrir el mapa: la app arranca en Inicio.
+const MapScreen = lazy(() => import('./components/MapScreen').then((mod) => ({ default: mod.MapScreen })));
+
+const DEFAULT_FILTERS: ZoneFilters = { category: 'todos', neighborhood: 'todos', shift: 'todos' };
+const matchesFilters = (z: ZoneLocation, f: ZoneFilters) =>
+  (f.category === 'todos' || z.category === f.category) &&
+  (f.neighborhood === 'todos' || z.neighborhood === f.neighborhood) &&
+  (f.shift === 'todos' || z.shift === f.shift);
+const INITIAL_REMINDERS = ['junin-1200'];
+// Perfil demo ficticio (D5)
+const INITIAL_PROFILE: UserProfile = {
+  name: 'Vecina/o Demo',
+  email: 'vecino.demo@example.com',
+  neighborhood: 'Barrio Centro',
+  address: 'Calle Junín 1200, Corrientes',
+  notificationsEnabled: true,
+  soundEnabled: true,
+};
+const MAX_TOASTS = 2;
+const TOAST_MS = 4500;
+const CLOCK_TICK_MS = 30_000;
 
 export default function App() {
-  // Navigation State - defaults to 'mapa' to display screenshot immediately
-  const [activeTab, setActiveTab] = useState<NavTab>('mapa');
+  const [activeTab, setActiveTab] = useState<NavTab>('inicio');
 
-  // Zones & Active Selection State
-  const [zones, setZones] = useState<ZoneLocation[]>(CORRIENTES_ZONES);
+  // Las pantallas calculan nextService con la hora actual: un re-render periódico hace avanzar "Pasa en…".
+  const [, setClockTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setClockTick((t) => t + 1), CLOCK_TICK_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  // Inicio abre Reportar en el historial; al salir de la pestaña vuelve al formulario.
+  const [reportView, setReportView] = useState<'nuevo' | 'historial'>('nuevo');
+  useEffect(() => {
+    if (activeTab !== 'reportar') setReportView('nuevo');
+  }, [activeTab]);
+
+  // Cada pestaña abre arriba (si no, Inicio → historial abre a mitad de la lista).
+  // Con llaves: en Chromium reciente scrollTo devuelve una Promise y React la tomaría como cleanup.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [activeTab]);
+
+  // Horarios y las notificaciones piden abrir la hoja: cada pedido suma uno, así se reabre
+  // aunque la zona sea la misma. Al salir del mapa vuelve a 0 (la nav abre el mapa sin hoja).
+  const [mapSheetRequest, setMapSheetRequest] = useState(0);
+  const requestMapSheet = () => setMapSheetRequest((n) => n + 1);
+  useEffect(() => {
+    if (activeTab !== 'mapa') setMapSheetRequest(0);
+  }, [activeTab]);
+
+  // Filtro único de zonas: lo leen las píldoras del mapa, FilterModal y Horarios.
+  // Un resultado vacío queda vacío (las pantallas muestran "Limpiar filtros").
+  const [filters, setFilters] = useState<ZoneFilters>(DEFAULT_FILTERS);
+  const filteredZones = useMemo(() => CORRIENTES_ZONES.filter((z) => matchesFilters(z, filters)), [filters]);
+  const activeFilterCount = Object.values(filters).filter((v) => v !== 'todos').length;
+  const setCategory = (category: FilterCategory) => setFilters((prev) => ({ ...prev, category }));
+  const clearFilters = () => setFilters(DEFAULT_FILTERS);
+
   const [selectedZone, setSelectedZone] = useState<ZoneLocation>(CORRIENTES_ZONES[0]); // Junin 1200
-  const [activeReminders, setActiveReminders] = useState<string[]>(['junin-1200']);
+  const [activeReminders, setActiveReminders] = useState<string[]>(INITIAL_REMINDERS);
+
+  // Seleccionar una zona que el filtro oculta (voz, notificaciones) limpia el filtro.
+  // Decide con el filtro vigente, no con el del render que creó el callback (la voz tarda 1,5 s).
+  const selectZone = (zone: ZoneLocation) => {
+    setSelectedZone(zone);
+    setFilters((prev) => (matchesFilters(zone, prev) ? prev : DEFAULT_FILTERS));
+  };
 
   // Citizen Reports & Notifications State
   const [reports, setReports] = useState<IncidentReport[]>(INITIAL_REPORTS);
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
+  const initialReportSeq = Math.max(...INITIAL_REPORTS.map((r) => Number(r.code.split('-')[2])));
+  const reportSeq = useRef(initialReportSeq);
 
-  // User Profile
-  const [profile, setProfile] = useState<UserProfile>({
-    name: 'Santiago Pruyas',
-    email: 'santi.pruyas@gmail.com',
-    neighborhood: 'Barrio Centro',
-    address: 'Calle Junín 1200, Corrientes',
-    notificationsEnabled: true,
-    soundEnabled: true,
-    driveSyncEnabled: true,
-    googleAccountConnected: true,
-  });
+  const [profile, setProfile] = useState<UserProfile>(INITIAL_PROFILE);
 
   // Modals visibility state
   const [modalRouteZone, setModalRouteZone] = useState<ZoneLocation | null>(null);
@@ -63,18 +117,23 @@ export default function App() {
 
   // Toasts
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
-
-  const addToast = (toast: Omit<ToastMessage, 'id'>) => {
-    const id = `toast_${Date.now()}`;
-    const newToast = { ...toast, id };
-    setToasts((prev) => [newToast, ...prev.slice(0, 3)]);
-    setTimeout(() => {
-      dismissToast(id);
-    }, 4500);
-  };
+  const toastSeq = useRef(0);
 
   const dismissToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  // Máximo MAX_TOASTS visibles; los 'loading' esperan a updateToast para cerrarse.
+  const addToast = (toast: Omit<ToastMessage, 'id'>) => {
+    const id = `toast-${++toastSeq.current}`;
+    setToasts((prev) => [{ ...toast, id }, ...prev].slice(0, MAX_TOASTS));
+    if (toast.type !== 'loading') setTimeout(() => dismissToast(id), TOAST_MS);
+    return id;
+  };
+
+  const updateToast = (id: string, toast: Omit<ToastMessage, 'id'>) => {
+    setToasts((prev) => prev.map((t) => (t.id === id ? { ...toast, id } : t)));
+    setTimeout(() => dismissToast(id), TOAST_MS);
   };
 
   // Toggle Reminder / Avisarme
@@ -84,97 +143,60 @@ export default function App() {
       setActiveReminders((prev) => prev.filter((id) => id !== zone.id));
       addToast({
         type: 'info',
-        title: 'Recordatorio Desactivado',
-        message: `Ya no recibirás alertas de paso para "${zone.name}".`,
+        title: 'Recordatorio desactivado',
+        message: `Ya no vas a recibir avisos de ${zone.name}.`,
       });
     } else {
       setActiveReminders((prev) => [...prev, zone.id]);
       addToast({
         type: 'success',
-        title: '¡Alarma de Recolección Activada!',
-        message: `Te notificaremos 30 minutos antes de la ventana horaria (${zone.timeWindow}) en ${zone.name}.`,
+        title: 'Recordatorio activado',
+        message: `Te avisamos 30 minutos antes del horario (${zone.timeWindow}) en ${zone.name}.`,
       });
     }
   };
 
-  // Google Drive export for Schedule
-  const handleExportSchedule = async (zone: ZoneLocation) => {
-    addToast({
-      type: 'info',
-      title: 'Sincronizando con Google Drive...',
-      message: `Guardando cronograma de ${zone.name} en tu nube.`,
-    });
-
-    try {
-      const result = await exportScheduleToGoogleDrive(zone);
-      addToast({
-        type: 'drive',
-        title: '¡Guardado en Google Drive!',
-        message: `Archivo "${result.fileName}" guardado con éxito.`,
-        linkUrl: result.fileUrl,
-        linkLabel: 'Ver en Google Drive',
-      });
-    } catch (err) {
-      addToast({
-        type: 'error',
-        title: 'Error de sincronización',
-        message: 'No se pudo completar el backup en Drive.',
-      });
-    }
+  // Descargas (D2): el toast "Generando…" se transforma en el resultado cuando sale el archivo.
+  const runDownload = (loadingTitle: string, doneTitle: string, download: () => Promise<string>) => {
+    const id = addToast({ type: 'loading', title: loadingTitle });
+    setTimeout(() => {
+      download()
+        .then((fileName) => updateToast(id, { type: 'success', title: doneTitle, message: fileName }))
+        .catch(() =>
+          updateToast(id, { type: 'error', title: 'No se pudo descargar', message: 'Probá de nuevo en unos segundos.' })
+        );
+    }, 400);
   };
 
-  // Google Drive export for Incident Report
-  const handleExportReport = async (report: IncidentReport) => {
-    addToast({
-      type: 'info',
-      title: 'Generando comprobante en Drive...',
-      message: `Respaldando ticket #${report.code}.`,
-    });
+  const handleDownloadSchedule = (zone: ZoneLocation) =>
+    runDownload('Generando horario…', 'Horario descargado', () => downloadSchedule(zone));
 
-    try {
-      const result = await exportReportToGoogleDrive(report);
-      setReports((prev) =>
-        prev.map((r) => (r.id === report.id ? { ...r, syncedToDrive: true } : r))
-      );
-      addToast({
-        type: 'drive',
-        title: '¡Comprobante en Google Drive!',
-        message: result.message,
-        linkUrl: result.fileUrl,
-        linkLabel: 'Abrir ticket en Drive',
-      });
-    } catch (err) {
-      addToast({
-        type: 'error',
-        title: 'Error de sincronización',
-        message: 'No se pudo guardar el comprobante.',
-      });
-    }
-  };
+  const handleDownloadReceipt = (report: IncidentReport) =>
+    runDownload('Generando comprobante…', 'Comprobante descargado', () => downloadReceipt(report));
 
-  // Create new Incident Report
-  const handleSubmitReport = async (
+  // El código del reclamo se genera solo acá y se devuelve a quien envía.
+  const handleSubmitReport = (
     newReportData: Omit<IncidentReport, 'id' | 'code' | 'createdAt' | 'status' | 'statusLabel'>
-  ) => {
-    const randomNum = Math.floor(1000 + Math.random() * 9000);
+  ): IncidentReport => {
+    reportSeq.current += 1;
+    const code = `ML-${new Date().getFullYear()}-${String(reportSeq.current).padStart(4, '0')}`;
     const newReport: IncidentReport = {
       ...newReportData,
-      id: `rep-${Date.now()}`,
-      code: `CR-${randomNum}`,
-      createdAt: 'Recién',
+      id: `rep-${reportSeq.current}`,
+      code,
+      createdAt: new Date().toISOString(),
       status: 'enviado',
-      statusLabel: 'Enviado a Higiene Urbana',
+      statusLabel: 'Enviado',
       estimatedResolution: 'Evaluación técnica en curso',
     };
 
     setReports((prev) => [newReport, ...prev]);
 
-    // Also add to notifications
     setNotifications((prev) => [
       {
-        id: `notif-${Date.now()}`,
-        title: `Reclamo #${newReport.code} registrado`,
-        message: `Hemos recibido tu reporte de ${newReport.categoryLabel} en ${newReport.address}.`,
+        id: `notif-${code}`,
+        title: `Reclamo #${code} registrado`,
+        message: `${newReport.categoryLabel} en ${newReport.address}. Te avisamos cuando cambie el estado.`,
         time: 'Ahora',
         read: false,
         type: 'report_update',
@@ -182,31 +204,8 @@ export default function App() {
       ...prev,
     ]);
 
-    addToast({
-      type: 'success',
-      title: '¡Reclamo Registrado Exitosamente!',
-      message: `Número de ticket asignado: #${newReport.code}. Se iniciará la revisión vecinal.`,
-    });
-
-    // If drive sync is enabled
-    if (newReportData.syncedToDrive) {
-      await handleExportReport(newReport);
-    }
-  };
-
-  // Filter apply from filter modal
-  const handleApplyFilters = (category: FilterCategory, neighborhood: string) => {
-    let filtered = CORRIENTES_ZONES;
-    if (category !== 'todos') {
-      filtered = filtered.filter((z) => z.category === category);
-    }
-    if (neighborhood !== 'todos') {
-      filtered = filtered.filter((z) => z.neighborhood === neighborhood);
-    }
-    setZones(filtered.length > 0 ? filtered : CORRIENTES_ZONES);
-    if (filtered.length > 0) {
-      setSelectedZone(filtered[0]);
-    }
+    // Sin toast: la pantalla de éxito de Reportar ya muestra el código.
+    return newReport;
   };
 
   // Mark all notifications as read
@@ -219,68 +218,122 @@ export default function App() {
     });
   };
 
+  // Tocar una notificación la marca como leída y, si tiene zona, la abre en el mapa.
+  const handleOpenNotification = (notification: NotificationItem) => {
+    setNotifications((prev) => prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n)));
+    const zone = CORRIENTES_ZONES.find((z) => z.id === notification.zoneId);
+    if (zone) {
+      selectZone(zone);
+      requestMapSheet();
+      setActiveTab('mapa');
+    }
+  };
+
+  // "Restablecer demo": vuelve todo a un primer arranque.
+  const handleResetDemo = () => {
+    setReports(INITIAL_REPORTS);
+    setNotifications(INITIAL_NOTIFICATIONS);
+    setActiveReminders(INITIAL_REMINDERS);
+    setFilters(DEFAULT_FILTERS);
+    setSelectedZone(CORRIENTES_ZONES[0]);
+    setProfile(INITIAL_PROFILE);
+    reportSeq.current = initialReportSeq;
+    resetMapHint();
+    setActiveTab('inicio');
+    setToasts([]);
+    addToast({ type: 'info', title: 'Demo restablecida', message: 'Volvimos todo al estado inicial.' });
+  };
+
   return (
-    <div className="min-h-screen bg-[#f7fafc] text-[#181c1e] flex flex-col font-['Public_Sans',sans-serif] selection:bg-[#006b21] selection:text-white">
+    <div className="min-h-screen bg-surface text-ink-body flex flex-col selection:bg-brand-600 selection:text-white">
       {/* Top Header */}
       <Header
         notifications={notifications}
-        profile={profile}
+        onGoHome={() => setActiveTab('inicio')}
         onOpenNotifications={() => setShowNotificationsModal(true)}
         onOpenProfile={() => setShowProfileModal(true)}
       />
 
-      {/* Main Dynamic View Content (pt-16 compensates for fixed header) */}
-      <main className="flex-1 w-full pt-16 flex flex-col">
-        {activeTab === 'mapa' && (
-          <MapScreen
-            zones={zones}
-            selectedZone={selectedZone}
-            onSelectZone={(zone) => setSelectedZone(zone)}
-            onOpenRouteDetails={(zone) => setModalRouteZone(zone)}
-            onOpenFilter={() => setShowFilterModal(true)}
-            onShare={(zone) => setShareZone(zone)}
-            onToggleReminder={handleToggleReminder}
-            activeReminders={activeReminders}
-          />
-        )}
-
-        {activeTab === 'inicio' && (
-          <HomeScreen
-            currentZone={selectedZone}
-            reports={reports}
-            profile={profile}
-            onNavigate={(tab) => setActiveTab(tab)}
-            onSelectZone={(zone) => setSelectedZone(zone)}
-            onToggleReminder={handleToggleReminder}
-            onExportSchedule={handleExportSchedule}
-            isReminderActive={activeReminders.includes(selectedZone.id)}
-            onOpenReportModal={() => setActiveTab('reportar')}
-          />
-        )}
-
-        {activeTab === 'horarios' && (
-          <SchedulesScreen
-            zones={zones}
-            onSelectZone={(zone) => {
-              setSelectedZone(zone);
-              setActiveTab('mapa');
-            }}
-            onOpenRouteDetails={(zone) => setModalRouteZone(zone)}
-            onToggleReminder={handleToggleReminder}
-            onExportSchedule={handleExportSchedule}
-            onShare={(zone) => setShareZone(zone)}
-            activeReminders={activeReminders}
-          />
-        )}
-
-        {activeTab === 'reportar' && (
-          <ReportScreen
-            reports={reports}
-            onSubmitReport={handleSubmitReport}
-            onExportReport={handleExportReport}
-            profile={profile}
-          />
-        )}
+      {/* Columna de la app (D1). pt-16 compensa el header fijo. */}
+      <main className={`flex-1 ${APP_COLUMN} lg:border-x lg:border-line pt-16 flex flex-col`}>
+        {/* Cambio de pestaña: fade corto, solo opacidad (un transform rompería los `fixed` de adentro). */}
+        <m.div
+          key={activeTab}
+          className="flex-1 flex flex-col"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.15, ease: 'easeOut' }}
+        >
+          {activeTab === 'mapa' && (
+            <Suspense fallback={<div className={`${MAP_SCREEN_HEIGHT} bg-surface-muted`} />}>
+            <MapScreen
+              zones={filteredZones}
+              selectedZone={selectedZone}
+              onSelectZone={selectZone}
+              activeCategory={filters.category}
+              onSelectCategory={setCategory}
+              onClearFilters={clearFilters}
+              activeFilterCount={activeFilterCount}
+              onOpenRouteDetails={(zone) => setModalRouteZone(zone)}
+              onOpenFilter={() => setShowFilterModal(true)}
+              onShare={(zone) => setShareZone(zone)}
+              onToggleReminder={handleToggleReminder}
+              activeReminders={activeReminders}
+              sheetRequest={mapSheetRequest}
+            />
+            </Suspense>
+          )}
+  
+          {activeTab === 'inicio' && (
+            <HomeScreen
+              currentZone={selectedZone}
+              reports={reports}
+              profile={profile}
+              onNavigate={(tab) => setActiveTab(tab)}
+              onOpenGreenPoints={() => {
+                setFilters({ ...DEFAULT_FILTERS, category: 'reciclables' });
+                setActiveTab('mapa');
+              }}
+              onOpenReportHistory={() => {
+                setReportView('historial');
+                setActiveTab('reportar');
+              }}
+              onToggleReminder={handleToggleReminder}
+              onExportSchedule={handleDownloadSchedule}
+              isReminderActive={activeReminders.includes(selectedZone.id)}
+            />
+          )}
+  
+          {activeTab === 'horarios' && (
+            <SchedulesScreen
+              zones={filteredZones}
+              activeCategory={filters.category}
+              onSelectCategory={setCategory}
+              onClearFilters={clearFilters}
+              activeFilterCount={activeFilterCount}
+              onSelectZone={(zone) => {
+                selectZone(zone);
+                requestMapSheet();
+                setActiveTab('mapa');
+              }}
+              onOpenRouteDetails={(zone) => setModalRouteZone(zone)}
+              onToggleReminder={handleToggleReminder}
+              onExportSchedule={handleDownloadSchedule}
+              onShare={(zone) => setShareZone(zone)}
+              activeReminders={activeReminders}
+            />
+          )}
+  
+          {activeTab === 'reportar' && (
+            <ReportScreen
+              reports={reports}
+              onSubmitReport={handleSubmitReport}
+              onExportReport={handleDownloadReceipt}
+              profile={profile}
+              initialView={reportView}
+            />
+          )}
+        </m.div>
       </main>
 
       {/* Bottom Floating Navigation */}
@@ -294,7 +347,7 @@ export default function App() {
       <RouteDetailsModal
         zone={modalRouteZone}
         onClose={() => setModalRouteZone(null)}
-        onExportSchedule={handleExportSchedule}
+        onExportSchedule={handleDownloadSchedule}
       />
 
       {showNotificationsModal && (
@@ -303,26 +356,21 @@ export default function App() {
           onClose={() => setShowNotificationsModal(false)}
           onMarkAllRead={handleMarkAllNotificationsRead}
           onClearAll={() => setNotifications([])}
-          onSelectZoneById={(zoneId) => {
-            const found = zones.find((z) => z.id === zoneId);
-            if (found) {
-              setSelectedZone(found);
-              setActiveTab('mapa');
-            }
-          }}
+          onOpenNotification={handleOpenNotification}
         />
       )}
 
       {showProfileModal && (
         <ProfileModal
           profile={profile}
+          onResetDemo={handleResetDemo}
           onClose={() => setShowProfileModal(false)}
           onSaveProfile={(newProf) => {
             setProfile(newProf);
             addToast({
               type: 'success',
-              title: 'Perfil Actualizado',
-              message: 'Tus datos y barrio principal fueron guardados.',
+              title: 'Perfil actualizado',
+              message: 'Guardamos tus datos.',
             });
           }}
         />
@@ -330,9 +378,10 @@ export default function App() {
 
       {showFilterModal && (
         <FilterModal
-          currentCategory={selectedZone.category}
+          filters={filters}
           onClose={() => setShowFilterModal(false)}
-          onApplyFilters={handleApplyFilters}
+          onApplyFilters={setFilters}
+          countResults={(f) => CORRIENTES_ZONES.filter((z) => matchesFilters(z, f)).length}
         />
       )}
 
@@ -342,6 +391,8 @@ export default function App() {
           onClose={() => setShareZone(null)}
         />
       )}
+
+      <DesktopPanel />
 
       {/* Toast Notification Container */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import {
   Search,
   Mic,
@@ -8,34 +9,40 @@ import {
   Recycle,
   Trees,
   MapPin,
-  Calendar,
-  Clock,
-  Bell,
-  Share2,
   Navigation,
   Truck,
-  Info,
-  CheckCircle2,
   X,
-  Layers,
+  Map as MapIcon,
+  Satellite,
   ZoomIn,
   ZoomOut,
   Crosshair,
-  Sparkles,
-  ChevronUp,
-  EyeOff
+  type LucideIcon
 } from 'lucide-react';
+import { AnimatePresence, m } from 'motion/react';
 import { ZoneLocation, FilterCategory } from '../types';
+import { categoryMeta } from '../lib/categoryMeta';
+import { CORRIENTES_ZONES } from '../data/corrientesData';
+import { MAP_SCREEN_HEIGHT } from '../lib/layout';
+import { dismissMapHint, isMapHintDismissed } from '../lib/mapHint';
+import { MapZoneSheet } from './MapZoneSheet';
 
 interface MapScreenProps {
+  /** Ya filtradas por App (filtro único). */
   zones: ZoneLocation[];
   selectedZone: ZoneLocation | null;
-  onSelectZone: (zone: ZoneLocation | null) => void;
+  onSelectZone: (zone: ZoneLocation) => void;
+  activeCategory: FilterCategory;
+  onSelectCategory: (category: FilterCategory) => void;
+  onClearFilters: () => void;
+  activeFilterCount: number;
   onOpenRouteDetails: (zone: ZoneLocation) => void;
   onOpenFilter: () => void;
   onShare: (zone: ZoneLocation) => void;
   onToggleReminder: (zone: ZoneLocation) => void;
   activeReminders: string[];
+  /** Pedidos de App para abrir la hoja de `selectedZone` (Horarios, notificaciones): cada valor nuevo > 0 la abre. */
+  sheetRequest?: number;
 }
 
 // Coordinates of Corrientes Collection Route (Calle Junín and Casco Histórico)
@@ -50,29 +57,135 @@ const JUNIN_ROUTE_COORDS: [number, number][] = [
   [-27.4725, -58.8290], // Plaza Cabral (Santa Fe e Yrigoyen)
   [-27.4760, -58.8280], // Av. 3 de Abril & Santa Fe
 ];
+const ROUTE_ZONE_ID = 'junin-1200';
+const CITY_CENTER: [number, number] = [-27.4698, -58.8341];
+
+/** Una vuelta completa del camión al recorrido. */
+const TRUCK_LOOP_MS = 30_000;
+/** Fracción del recorrido en la que el camión se desvanece al llegar y aparece al volver a salir. */
+const TRUCK_FADE = 0.03;
+
+// Tramos del recorrido con su largo (equirectangular, alcanza para unas cuadras) y rumbo en
+// pantalla (0° = este, positivo = sentido horario), para avanzar a velocidad constante.
+const ROUTE_SEGMENTS = (() => {
+  const cosLat = Math.cos((CITY_CENTER[0] * Math.PI) / 180);
+  let start = 0;
+  return JUNIN_ROUTE_COORDS.slice(1).map((to, i) => {
+    const from = JUNIN_ROUTE_COORDS[i];
+    const east = (to[1] - from[1]) * cosLat;
+    const north = to[0] - from[0];
+    const length = Math.hypot(east, north);
+    const segment = { from, to, start, length, heading: (Math.atan2(-north, east) * 180) / Math.PI };
+    start += length;
+    return segment;
+  });
+})();
+const ROUTE_LENGTH = ROUTE_SEGMENTS[ROUTE_SEGMENTS.length - 1].start + ROUTE_SEGMENTS[ROUTE_SEGMENTS.length - 1].length;
+
+/** El glifo de lucide mira al este: hacia el oeste se espeja para no quedar cabeza abajo. */
+const truckGlyphTransform = (heading: number) =>
+  Math.abs(heading) <= 90
+    ? `rotate(${heading}deg) scaleX(1)`
+    : `rotate(${heading > 0 ? heading - 180 : heading + 180}deg) scaleX(-1)`;
+
+const SELECT_ZOOM = 16;
+/** Desde este zoom todos los pins llevan etiqueta; antes, solo el seleccionado. */
+const LABEL_ZOOM = 16;
+
+const TILE_LAYERS: Record<'streets' | 'satellite', { url: string; subdomains: string; attribution: string }> = {
+  // Esri World Street Map - no API key required (CARTO/OSM block localhost)
+  streets: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    subdomains: '',
+    attribution: 'Tiles &copy; Esri',
+  },
+  satellite: {
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    subdomains: '',
+    attribution: 'Tiles &copy; Esri',
+  },
+};
+
+// Glifos de lucide (los mismos paths que categoryMeta.Icon) para los pins, que Leaflet recibe como HTML.
+const PIN_GLYPHS = new Map<LucideIcon, string>([
+  [Trash2, '<path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'],
+  [Recycle, '<path d="M7 19H4.815a1.83 1.83 0 0 1-1.57-.881 1.785 1.785 0 0 1-.004-1.784L7.196 9.5"/><path d="M11 19h8.203a1.83 1.83 0 0 0 1.556-.89 1.784 1.784 0 0 0 0-1.775l-1.226-2.12"/><path d="m14 16-3 3 3 3"/><path d="M8.293 13.596 7.196 9.5 3.1 10.598"/><path d="m9.344 5.811 1.093-1.892A1.83 1.83 0 0 1 11.985 3a1.784 1.784 0 0 1 1.546.888l3.943 6.843"/><path d="m13.378 9.633 4.096 1.098 1.097-4.096"/>'],
+  [Trees, '<path d="M10 10v.2A3 3 0 0 1 8.9 16H5a3 3 0 0 1-1-5.8V10a3 3 0 0 1 6 0Z"/><path d="M7 16v6"/><path d="M13 19v3"/><path d="M12 19h8.3a1 1 0 0 0 .7-1.7L18 14h.3a1 1 0 0 0 .7-1.7L16 9h.2a1 1 0 0 0 .8-1.7L13 3l-1.4 1.5"/>'],
+]);
+const TRUCK_GLYPH = '<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/>';
+const SVG_ATTRS = 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"';
+
+// Misma forma para todas las categorías: solo cambian el color y el glifo.
+const pinHtml = (zone: ZoneLocation, selected: boolean, showLabel: boolean) => {
+  const meta = categoryMeta[zone.category];
+  const color = `var(--color-${meta.colorToken})`;
+  return `
+    <div class="relative w-11 h-11 flex items-center justify-center">
+      ${selected ? `<span class="absolute w-12 h-12 rounded-full opacity-25" style="background-color: ${color};"></span>` : ''}
+      <span class="relative ${selected ? 'w-10 h-10' : 'w-8 h-8'} rounded-full border-2 border-white shadow-elev-2 flex items-center justify-center text-white" style="background-color: ${color};">
+        <svg class="${selected ? 'w-5 h-5' : 'w-4 h-4'}" ${SVG_ATTRS}>${PIN_GLYPHS.get(meta.Icon) ?? ''}</svg>
+      </span>
+      ${
+        showLabel
+          ? `<span class="absolute top-full -mt-1 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-surface-card text-ink text-xs font-semibold whitespace-nowrap shadow-elev-1 border border-line">${zone.name}</span>`
+          : ''
+      }
+    </div>
+  `;
+};
+
+// El halo "en vivo" es la única animación continua; con reduced-motion no se muestra.
+const TRUCK_ICON_HTML = `
+  <div class="relative w-11 h-11 flex items-center justify-center">
+    <span class="absolute inset-1 rounded-full bg-brand-500 animate-halo motion-reduce:hidden"></span>
+    <span class="relative w-9 h-9 rounded-full bg-brand-600 border-2 border-white shadow-elev-2 flex items-center justify-center text-white">
+      <svg class="truck-glyph w-4 h-4 transition-transform duration-300 ease-out" ${SVG_ATTRS}>${TRUCK_GLYPH}</svg>
+    </span>
+    <span class="absolute top-full mt-0.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full bg-brand-600 text-white text-xs font-semibold whitespace-nowrap shadow-elev-1">Móvil 14 · en vivo</span>
+  </div>
+`;
+
+const CATEGORY_PILLS: Array<{ id: string; category: FilterCategory }> = [
+  { id: 'filter-todos', category: 'todos' },
+  { id: 'filter-residuos-comunes', category: 'residuos-comunes' },
+  { id: 'filter-reciclables', category: 'reciclables' },
+  { id: 'filter-poda', category: 'poda-escombros' },
+];
+
+/** Sin tildes ni mayúsculas: "camba" encuentra "Cambá Cuá". */
+const foldText = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+
+const floatingButton ='w-11 h-11 rounded-control shadow-elev-2 border border-line flex items-center justify-center transition-colors';
 
 export const MapScreen: React.FC<MapScreenProps> = ({
   zones,
   selectedZone,
   onSelectZone,
+  activeCategory,
+  onSelectCategory,
+  onClearFilters,
+  activeFilterCount,
   onOpenRouteDetails,
   onOpenFilter,
   onShare,
   onToggleReminder,
   activeReminders,
+  sheetRequest = 0,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<FilterCategory>('todos');
   const [isListening, setIsListening] = useState(false);
   const [showLiveTruck, setShowLiveTruck] = useState(true);
-  const [mapLayerType, setMapLayerType] = useState<'streets' | 'satellite' | 'vector'>('streets');
-  const [userGpsLocation, setUserGpsLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [mapLayerType, setMapLayerType] = useState<'streets' | 'satellite'>('streets');
   const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
-  
-  // Controls visibility of the bottom collection sheet modal
-  // Default is false so streets are completely visible without obstruction
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  const [showAllLabels, setShowAllLabels] = useState(false);
+  const [showHint, setShowHint] = useState(!isMapHintDismissed());
+
+  // Cerrada por defecto para ver las calles sin obstrucción
+  const [isSheetOpen, setIsSheetOpen] = useState(sheetRequest > 0);
+  // Un pin activado con teclado se recrea al seleccionarse: el foco pasa a la hoja.
+  const focusSheetOnOpen = useRef(false);
+  const voiceTimerRef = useRef<number | undefined>(undefined);
 
   // Map DOM and Leaflet References
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
@@ -80,16 +193,25 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const markersLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const routePolylineRef = useRef<L.Polyline | null>(null);
-  const truckMarkerRef = useRef<L.Marker | null>(null);
+  // Para calcular el área visible del mapa entre los controles de arriba y la hoja
+  const topOverlayRef = useRef<HTMLDivElement | null>(null);
+  const bottomStackRef = useRef<HTMLDivElement | null>(null);
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const prevSelectedIdRef = useRef(selectedZone?.id);
 
-  // Filtered zones
-  const filteredZones = zones.filter((zone) => {
-    if (activeFilter === 'todos') return true;
-    return zone.category === activeFilter;
-  });
+  // La hoja solo se muestra si la zona seleccionada pasa el filtro actual.
+  const showSheet = isSheetOpen && !!selectedZone && zones.some((z) => z.id === selectedZone.id);
+  const isReminderActive = selectedZone ? activeReminders.includes(selectedZone.id) : false;
+  // El recorrido es el de Junín: él y el camión que lo sigue se ocultan si el filtro excluye esa zona.
+  const showRoute = zones.some((z) => z.id === ROUTE_ZONE_ID);
+  const isRouteHighlighted = showSheet && selectedZone?.id === ROUTE_ZONE_ID;
+  // Filtros del modal (barrio, turno): la categoría ya se ve en las píldoras.
+  const modalFilterCount = activeFilterCount - (activeCategory === 'todos' ? 0 : 1);
 
-  const currentActiveZone = selectedZone || zones[0];
-  const isReminderActive = currentActiveZone ? activeReminders.includes(currentActiveZone.id) : false;
+  const dismissHint = () => {
+    dismissMapHint();
+    setShowHint(false);
+  };
 
   // Initialize Leaflet Map
   useEffect(() => {
@@ -100,58 +222,39 @@ export const MapScreen: React.FC<MapScreenProps> = ({
       mapInstanceRef.current = null;
     }
 
-    const defaultLat = selectedZone?.coordinates?.lat || -27.4698;
-    const defaultLng = selectedZone?.coordinates?.lng || -58.8341;
-
-    // Create Leaflet map instance
     const map = L.map(mapContainerRef.current, {
-      center: [defaultLat, defaultLng],
+      center: selectedZone ? [selectedZone.coordinates.lat, selectedZone.coordinates.lng] : CITY_CENTER,
       zoom: 15,
       zoomControl: false,
-      attributionControl: false,
     });
 
-    // Add Tile Layer (CartoDB Voyager - high contrast, clear street names)
-    const initialTileUrl =
-      mapLayerType === 'satellite'
-        ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-        : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-
-    const tileLayer = L.tileLayer(initialTileUrl, {
-      maxZoom: 19,
-      subdomains: 'abcd',
-    }).addTo(map);
-
-    tileLayerRef.current = tileLayer;
-
     // Layer group for pins
-    const markersGroup = L.layerGroup().addTo(map);
-    markersLayerGroupRef.current = markersGroup;
+    markersLayerGroupRef.current = L.layerGroup().addTo(map);
 
-    // Route Polyline (Green dashed line representing collection path)
-    const polyline = L.polyline(JUNIN_ROUTE_COORDS, {
-      color: '#006b21',
-      weight: 5,
-      opacity: 0.85,
-      dashArray: '8, 8',
+    // Recorrido de recolección; su visibilidad y estilo los maneja un effect.
+    routePolylineRef.current = L.polyline(JUNIN_ROUTE_COORDS, {
+      className: 'route-line',
       lineCap: 'round',
-    }).addTo(map);
-    routePolylineRef.current = polyline;
+    });
 
     mapInstanceRef.current = map;
     setIsMapReady(true);
 
-    // Clicking anywhere on the empty map dismisses the info sheet so user can explore streets with full view
+    // Tocar el mapa vacío cierra la hoja para explorar las calles
     map.on('click', () => {
       setIsSheetOpen(false);
       setShowSearchSuggestions(false);
     });
+    map.on('dragstart zoomstart', dismissHint);
+    map.on('zoomend', () => setShowAllLabels(map.getZoom() >= LABEL_ZOOM));
 
-    setTimeout(() => {
+    // Se cancela al desmontar: sobre un mapa ya removido, Leaflet tira `_leaflet_pos` de undefined.
+    const resizeTimer = setTimeout(() => {
       map.invalidateSize();
     }, 200);
 
     return () => {
+      clearTimeout(resizeTimer);
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
@@ -159,22 +262,18 @@ export const MapScreen: React.FC<MapScreenProps> = ({
     };
   }, []);
 
-  // Update Tile Layer when layer type changes
+  // Set Tile Layer on mount and when layer type changes
   useEffect(() => {
-    if (!mapInstanceRef.current || !tileLayerRef.current) return;
+    if (!mapInstanceRef.current) return;
 
-    mapInstanceRef.current.removeLayer(tileLayerRef.current);
-
-    let url = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-    if (mapLayerType === 'satellite') {
-      url = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-    } else if (mapLayerType === 'vector') {
-      url = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    if (tileLayerRef.current) {
+      mapInstanceRef.current.removeLayer(tileLayerRef.current);
     }
 
-    const newLayer = L.tileLayer(url, { maxZoom: 19, subdomains: 'abcd' }).addTo(mapInstanceRef.current);
+    const { url, subdomains, attribution } = TILE_LAYERS[mapLayerType];
+    const newLayer = L.tileLayer(url, { maxZoom: 19, subdomains, attribution }).addTo(mapInstanceRef.current);
     tileLayerRef.current = newLayer;
-  }, [mapLayerType]);
+  }, [mapLayerType, isMapReady]);
 
   // Update Markers whenever filtered zones or selected zone changes
   useEffect(() => {
@@ -182,182 +281,180 @@ export const MapScreen: React.FC<MapScreenProps> = ({
 
     markersLayerGroupRef.current.clearLayers();
 
-    filteredZones.forEach((zone) => {
-      const isSelected = selectedZone?.id === zone.id;
-      const isRecycle = zone.category === 'reciclables' || zone.category === 'puntos-verdes';
-      const isPoda = zone.category === 'poda-escombros';
-
-      const bgColor = isRecycle ? '#059669' : isPoda ? '#d97706' : '#006b21';
-      const pinIconHtml = `
-        <div class="relative flex items-center justify-center -translate-x-1/2 -translate-y-1/2 cursor-pointer group">
-          ${
-            isSelected && isSheetOpen
-              ? `<div class="absolute w-12 h-12 rounded-full animate-ping" style="background-color: ${bgColor}40;"></div>`
-              : ''
-          }
-          <div class="relative w-8 h-8 rounded-full shadow-lg flex items-center justify-center border-2 border-white transition-transform duration-200 group-hover:scale-110" style="background-color: ${bgColor};">
-            ${
-              isRecycle
-                ? `<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>`
-                : isPoda
-                ? `<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>`
-                : `<svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>`
-            }
-          </div>
-          <div class="absolute top-full mt-1 px-2 py-0.5 rounded shadow text-[10px] font-bold whitespace-nowrap bg-white text-[#181c1e] border border-[#e2e8f0] opacity-90 group-hover:opacity-100 ${
-            isSelected && isSheetOpen ? 'ring-2 ring-[#006b21] scale-105 opacity-100' : ''
-          }">
-            ${zone.name}
-          </div>
-        </div>
-      `;
-
-      const customIcon = L.divIcon({
-        className: 'custom-leaflet-pin',
-        html: pinIconHtml,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
-      });
+    zones.forEach((zone) => {
+      const isSelected = showSheet && selectedZone?.id === zone.id;
 
       const marker = L.marker([zone.coordinates.lat, zone.coordinates.lng], {
-        icon: customIcon,
+        icon: L.divIcon({
+          className: 'map-zone-pin',
+          html: pinHtml(zone, isSelected, isSelected || showAllLabels),
+          iconSize: [44, 44],
+          iconAnchor: [22, 22],
+        }),
+        title: zone.name,
+        zIndexOffset: isSelected ? 1000 : 0,
+        riseOnHover: true,
       });
 
-      // Clicking a pin selects the zone and opens the details sheet
-      marker.on('click', (e) => {
-        L.DomEvent.stopPropagation(e);
+      // Seleccionar abre la hoja; el flyTo lo hace un único effect.
+      const select = (viaKeyboard: boolean) => {
+        focusSheetOnOpen.current = viaKeyboard;
         onSelectZone(zone);
         setIsSheetOpen(true);
-        if (mapInstanceRef.current) {
-          mapInstanceRef.current.flyTo([zone.coordinates.lat, zone.coordinates.lng], 16, {
-            duration: 0.6,
-          });
-        }
+      };
+      marker.on('click', (e) => {
+        L.DomEvent.stopPropagation(e);
+        select(false);
+      });
+      // Leaflet hace el pin focusable (role="button") pero no lo activa con Enter ni Espacio.
+      marker.on('keypress', (e: L.LeafletKeyboardEvent) => {
+        if (e.originalEvent.key !== 'Enter' && e.originalEvent.key !== ' ') return;
+        e.originalEvent.preventDefault();
+        select(true);
       });
 
       markersLayerGroupRef.current?.addLayer(marker);
     });
-  }, [filteredZones, selectedZone, isSheetOpen]);
+  }, [zones, selectedZone?.id, showSheet, showAllLabels, isMapReady]);
 
-  // Center map when selected zone changes externally
+  // Con el mapa ya montado (p.ej. una notificación), seleccionar otra zona o un pedido nuevo de App la abre,
+  // aunque la zona sea la misma que ya estaba seleccionada.
   useEffect(() => {
-    if (!mapInstanceRef.current || !selectedZone?.coordinates) return;
-    mapInstanceRef.current.flyTo(
-      [selectedZone.coordinates.lat, selectedZone.coordinates.lng],
-      15.5,
-      { duration: 0.7 }
-    );
-  }, [selectedZone]);
+    const changed = prevSelectedIdRef.current !== selectedZone?.id;
+    prevSelectedIdRef.current = selectedZone?.id;
+    if (changed || sheetRequest > 0) setIsSheetOpen(true);
+  }, [selectedZone?.id, sheetRequest]);
 
-  // Animated Live Truck along polyline
+  // Si el filtro oculta la zona de la hoja, la hoja se cierra (y no reaparece al limpiar).
   useEffect(() => {
-    if (!mapInstanceRef.current || !showLiveTruck) {
-      if (truckMarkerRef.current && mapInstanceRef.current) {
-        mapInstanceRef.current.removeLayer(truckMarkerRef.current);
-        truckMarkerRef.current = null;
-      }
+    if (selectedZone && !zones.some((z) => z.id === selectedZone.id)) setIsSheetOpen(false);
+  }, [zones]);
+
+  useEffect(() => {
+    if (showSheet) dismissHint();
+  }, [showSheet]);
+
+  useEffect(() => {
+    if (!showSheet || !focusSheetOnOpen.current) return;
+    focusSheetOnOpen.current = false;
+    // preventScroll: el contenedor del mapa tiene overflow hidden y el foco lo desplazaría.
+    sheetRef.current?.querySelector<HTMLElement>('#map-zone-sheet')?.focus({ preventScroll: true });
+  }, [showSheet, selectedZone?.id]);
+
+  // Un solo flyTo por selección, con el pin centrado en el área visible arriba de la hoja.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !showSheet || !selectedZone || !topOverlayRef.current || !bottomStackRef.current || !sheetRef.current) return;
+
+    const zoom = Math.max(map.getZoom(), SELECT_ZOOM);
+    // offsetTop/offsetHeight ignoran el transform de la animación de entrada de la hoja.
+    const visibleTop = topOverlayRef.current.offsetTop + topOverlayRef.current.offsetHeight;
+    const visibleBottom = bottomStackRef.current.offsetTop + sheetRef.current.offsetTop;
+    const offsetY = map.getSize().y / 2 - (visibleTop + visibleBottom) / 2;
+    const pinPoint = map.project([selectedZone.coordinates.lat, selectedZone.coordinates.lng], zoom);
+    map.flyTo(map.unproject(pinPoint.add([0, offsetY]), zoom), zoom, { duration: 0.6 });
+  }, [selectedZone?.id, showSheet]);
+
+  // Polilínea: oculta sin zonas de recolección, resaltada con Junín seleccionada.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const line = routePolylineRef.current;
+    if (!map || !line) return;
+    if (!showRoute) {
+      line.remove();
       return;
     }
+    line.addTo(map);
+    line.setStyle(
+      isRouteHighlighted
+        ? { weight: 6, opacity: 1, dashArray: undefined }
+        : { weight: 4, opacity: 0.6, dashArray: '8, 8' }
+    );
+  }, [showRoute, isRouteHighlighted, isMapReady]);
 
-    let progress = 0.45;
-
-    const truckIconHtml = `
-      <div class="relative flex items-center justify-center -translate-x-1/2 -translate-y-1/2 pointer-events-none">
-        <div class="w-9 h-9 bg-[#006b21] rounded-full shadow-2xl flex items-center justify-center border-2 border-white text-white animate-bounce">
-          <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z"></path>
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"></path>
-          </svg>
-        </div>
-        <div class="absolute -bottom-5 bg-[#006b21] text-white text-[8px] font-extrabold px-1.5 py-0.5 rounded-full shadow-lg whitespace-nowrap">
-          Móvil #14 (En vivo)
-        </div>
-      </div>
-    `;
+  // Camión en vivo: avanza cada frame por la polilínea a velocidad constante. El progreso sale
+  // del reloj, así al volver a la pestaña sigue donde corresponde.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !showLiveTruck || !showRoute) return;
 
     const truckIcon = L.divIcon({
-      className: 'custom-truck-pin',
-      html: truckIconHtml,
-      iconSize: [36, 36],
-      iconAnchor: [18, 18],
+      className: 'map-truck-pin',
+      html: TRUCK_ICON_HTML,
+      iconSize: [44, 44],
+      iconAnchor: [22, 22],
     });
+    const marker = L.marker(JUNIN_ROUTE_COORDS[0], { icon: truckIcon, interactive: false, keyboard: false }).addTo(map);
+    const glyph = marker.getElement()?.querySelector<SVGElement>('.truck-glyph');
 
-    const getCoordAtProgress = (p: number): [number, number] => {
-      const totalPoints = JUNIN_ROUTE_COORDS.length;
-      const indexFloat = p * (totalPoints - 1);
-      const index = Math.floor(indexFloat);
-      const remainder = indexFloat - index;
+    // Durante la animación de zoom de Leaflet, mover el marcador lo haría saltar.
+    let zooming = false;
+    const onZoomAnim = () => (zooming = true);
+    const onZoomEnd = () => (zooming = false);
+    map.on('zoomanim', onZoomAnim);
+    map.on('zoomend', onZoomEnd);
 
-      if (index >= totalPoints - 1) return JUNIN_ROUTE_COORDS[totalPoints - 1];
-
-      const p1 = JUNIN_ROUTE_COORDS[index];
-      const p2 = JUNIN_ROUTE_COORDS[index + 1];
-
-      return [p1[0] + (p2[0] - p1[0]) * remainder, p1[1] + (p2[1] - p1[1]) * remainder];
-    };
-
-    const initialPos = getCoordAtProgress(progress);
-    const truckMarker = L.marker(initialPos, { icon: truckIcon }).addTo(mapInstanceRef.current);
-    truckMarkerRef.current = truckMarker;
-
-    const interval = setInterval(() => {
-      progress += 0.012;
-      if (progress > 1) progress = 0.05;
-      const newPos = getCoordAtProgress(progress);
-      truckMarker.setLatLng(newPos);
-    }, 1200);
-
-    return () => {
-      clearInterval(interval);
-      if (truckMarkerRef.current && mapInstanceRef.current) {
-        mapInstanceRef.current.removeLayer(truckMarkerRef.current);
-        truckMarkerRef.current = null;
+    let frame = 0;
+    let segment: (typeof ROUTE_SEGMENTS)[number] | undefined;
+    const tick = () => {
+      frame = requestAnimationFrame(tick);
+      if (zooming) return;
+      const progress = (Date.now() % TRUCK_LOOP_MS) / TRUCK_LOOP_MS;
+      const distance = progress * ROUTE_LENGTH;
+      const current = ROUTE_SEGMENTS.find((s) => distance < s.start + s.length) ?? ROUTE_SEGMENTS[ROUTE_SEGMENTS.length - 1];
+      const t = (distance - current.start) / current.length;
+      marker.setLatLng([
+        current.from[0] + (current.to[0] - current.from[0]) * t,
+        current.from[1] + (current.to[1] - current.from[1]) * t,
+      ]);
+      // Se desvanece al final del recorrido y reaparece al principio, en vez de saltar.
+      marker.setOpacity(Math.min(1, progress / TRUCK_FADE, (1 - progress) / TRUCK_FADE));
+      if (current !== segment) {
+        segment = current;
+        if (glyph) glyph.style.transform = truckGlyphTransform(current.heading);
       }
     };
-  }, [showLiveTruck, isMapReady]);
+    tick();
 
-  // Voice search simulation
+    return () => {
+      cancelAnimationFrame(frame);
+      map.off('zoomanim', onZoomAnim);
+      map.off('zoomend', onZoomEnd);
+      marker.remove();
+    };
+  }, [showLiveTruck, showRoute, isMapReady]);
+
+  // Voice search simulation. Si se sale del mapa antes de que "escuche", no selecciona nada.
+  useEffect(() => () => clearTimeout(voiceTimerRef.current), []);
+
   const handleVoiceSearch = () => {
     setIsListening(true);
-    setTimeout(() => {
+    clearTimeout(voiceTimerRef.current);
+    voiceTimerRef.current = window.setTimeout(() => {
       setIsListening(false);
       setSearchQuery('Calle Junín 1200, Corrientes');
-      const found = zones.find((z) => z.id === 'junin-1200') || zones[0];
+      // Busca en todas las zonas: si el filtro la oculta, App lo limpia al seleccionarla.
+      const found = CORRIENTES_ZONES.find((z) => z.id === ROUTE_ZONE_ID);
       if (found) {
         onSelectZone(found);
         setIsSheetOpen(true);
-        if (mapInstanceRef.current) {
-          mapInstanceRef.current.flyTo([found.coordinates.lat, found.coordinates.lng], 16.5);
-        }
       }
     }, 1500);
   };
 
   // Center on user GPS
   const handleLocateUser = () => {
+    const flyToUser = (coords: { lat: number; lng: number }) => {
+      mapInstanceRef.current?.flyTo([coords.lat, coords.lng], SELECT_ZOOM);
+    };
+    const fallback = { lat: CITY_CENTER[0], lng: CITY_CENTER[1] };
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-          setUserGpsLocation(coords);
-          if (mapInstanceRef.current) {
-            mapInstanceRef.current.flyTo([coords.lat, coords.lng], 16);
-          }
-        },
-        () => {
-          const fallback = { lat: -27.4698, lng: -58.8341 };
-          setUserGpsLocation(fallback);
-          if (mapInstanceRef.current) {
-            mapInstanceRef.current.flyTo([fallback.lat, fallback.lng], 16);
-          }
-        }
+        (pos) => flyToUser({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => flyToUser(fallback)
       );
     } else {
-      const fallback = { lat: -27.4698, lng: -58.8341 };
-      setUserGpsLocation(fallback);
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.flyTo([fallback.lat, fallback.lng], 16);
-      }
+      flyToUser(fallback);
     }
   };
 
@@ -370,19 +467,32 @@ export const MapScreen: React.FC<MapScreenProps> = ({
   };
 
   const handleResetCenter = () => {
-    if (mapInstanceRef.current) {
-      mapInstanceRef.current.flyTo([-27.4698, -58.8341], 15);
-    }
+    mapInstanceRef.current?.flyTo(CITY_CENTER, 15);
   };
 
+  const query = foldText(searchQuery);
+  const suggestions = zones.filter(
+    (z) =>
+      foldText(z.name).includes(query) ||
+      foldText(z.neighborhood).includes(query) ||
+      foldText(z.address).includes(query)
+  );
+
   return (
-    <div id="map-screen" className="relative w-full h-[calc(100vh-4rem)] flex flex-col overflow-hidden bg-[#e2ecd8]">
+    <div id="map-screen" className={`relative w-full ${MAP_SCREEN_HEIGHT} overflow-hidden bg-surface-muted`}>
+      {/* Main Interactive Leaflet Map Container */}
+      <div
+        id="leaflet-map-container"
+        ref={mapContainerRef}
+        className="w-full h-full z-0 cursor-grab active:cursor-grabbing outline-none"
+      />
+
       {/* Top Search & Filter Floating Header */}
-      <div className="absolute top-0 inset-x-0 z-20 pt-3 px-4 max-w-md mx-auto flex flex-col gap-2 pointer-events-auto">
+      <div ref={topOverlayRef} className="absolute top-0 inset-x-0 z-30 pt-3 px-4 max-w-md mx-auto flex flex-col gap-2">
         {/* Search Bar */}
         <div className="flex items-center gap-2">
-          <div className="flex-1 bg-white h-12 rounded-2xl shadow-md flex items-center px-3.5 gap-2 border border-[#e2e8f0] relative">
-            <Search className="w-4 h-4 text-[#3e4a3c] shrink-0" />
+          <div className="flex-1 bg-surface-card h-12 rounded-card shadow-elev-2 flex items-center pl-3.5 pr-1 gap-2 border border-line">
+            <Search className="w-4 h-4 text-ink-muted shrink-0" />
             <input
               id="map-search-input"
               type="text"
@@ -392,8 +502,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                 setShowSearchSuggestions(true);
               }}
               onFocus={() => setShowSearchSuggestions(true)}
-              placeholder="Buscar calle o barrio en Corrientes..."
-              className="bg-transparent border-none outline-none w-full text-sm text-[#181c1e] placeholder:text-[#555f71]/70 font-medium font-['Public_Sans',sans-serif]"
+              placeholder="Buscar calle o barrio"
+              aria-label="Buscar calle o barrio"
+              className="bg-transparent border-none outline-none w-full min-w-0 text-base text-ink placeholder:text-ink-muted"
             />
             {searchQuery && (
               <button
@@ -401,7 +512,8 @@ export const MapScreen: React.FC<MapScreenProps> = ({
                   setSearchQuery('');
                   setShowSearchSuggestions(false);
                 }}
-                className="text-[#555f71] hover:text-[#181c1e] p-1"
+                aria-label="Borrar búsqueda"
+                className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-ink-muted hover:text-ink"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -409,11 +521,9 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             <button
               id="btn-voice-search"
               onClick={handleVoiceSearch}
-              aria-label="Búsqueda por voz"
-              className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-                isListening
-                  ? 'bg-red-500 text-white animate-pulse'
-                  : 'hover:bg-[#ebeef0] text-[#3e4a3c]'
+              aria-label={isListening ? 'Escuchando…' : 'Búsqueda por voz'}
+              className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center transition-colors ${
+                isListening ? 'bg-danger text-white' : 'hover:bg-surface-muted text-ink-body'
               }`}
             >
               <Mic className="w-4 h-4" />
@@ -424,432 +534,205 @@ export const MapScreen: React.FC<MapScreenProps> = ({
             id="btn-open-filter"
             onClick={onOpenFilter}
             aria-label="Filtros avanzados"
-            className="w-12 h-12 bg-white rounded-2xl shadow-md flex items-center justify-center border border-[#e2e8f0] text-[#006b21] hover:bg-[#f1f4f6] transition-colors shrink-0"
+            className="w-12 h-12 bg-surface-card rounded-card shadow-elev-2 flex items-center justify-center border border-line text-brand-600 hover:bg-surface-muted transition-colors shrink-0"
           >
-            <SlidersHorizontal className="w-4 h-4" />
+            <SlidersHorizontal className="w-5 h-5" />
           </button>
         </div>
 
         {/* Autocomplete Dropdown */}
         {showSearchSuggestions && searchQuery.trim().length > 0 && (
-          <div className="bg-white rounded-2xl shadow-2xl border border-[#e2e8f0] p-1.5 flex flex-col gap-1 max-h-52 overflow-y-auto">
-            {zones
-              .filter(
-                (z) =>
-                  z.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  z.neighborhood.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  z.address.toLowerCase().includes(searchQuery.toLowerCase())
-              )
-              .map((z) => (
-                <button
-                  key={z.id}
-                  onClick={() => {
-                    setSearchQuery(z.name);
-                    onSelectZone(z);
-                    setIsSheetOpen(true);
-                    setShowSearchSuggestions(false);
-                    if (mapInstanceRef.current) {
-                      mapInstanceRef.current.flyTo([z.coordinates.lat, z.coordinates.lng], 16.5);
-                    }
-                  }}
-                  className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-[#f1f4f6] text-left transition-colors"
-                >
-                  <MapPin className="w-4 h-4 text-[#006b21] shrink-0" />
-                  <div className="flex flex-col">
-                    <span className="text-xs font-bold text-[#181c1e]">{z.name}</span>
-                    <span className="text-[11px] text-[#555f71]">
-                      {z.neighborhood} • {z.type}
-                    </span>
-                  </div>
-                </button>
-              ))}
+          <div className="bg-surface-card rounded-card shadow-elev-3 border border-line p-1.5 flex flex-col gap-1 max-h-52 overflow-y-auto">
+            {suggestions.length === 0 && (
+              <p className="px-2.5 py-2 text-sm text-ink-muted">No encontramos esa calle o barrio.</p>
+            )}
+            {suggestions.map((z) => (
+              <button
+                key={z.id}
+                onClick={() => {
+                  setSearchQuery(z.name);
+                  onSelectZone(z);
+                  setIsSheetOpen(true);
+                  setShowSearchSuggestions(false);
+                }}
+                className="flex items-center gap-2.5 p-2.5 rounded-control hover:bg-surface-muted text-left transition-colors"
+              >
+                <MapPin className="w-4 h-4 text-brand-600 shrink-0" />
+                <span className="flex flex-col">
+                  <span className="text-sm font-semibold text-ink">{z.name}</span>
+                  <span className="text-xs text-ink-muted">
+                    {z.neighborhood} · {z.type === 'Punto Verde' ? z.type : categoryMeta[z.category].label}
+                  </span>
+                </span>
+              </button>
+            ))}
           </div>
         )}
 
-        {/* Horizontal Filter Category Pills */}
+        {/* Category pills (+ chip de filtros del modal) */}
         <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none -mx-4 px-4">
-          <button
-            id="filter-todos"
-            onClick={() => setActiveFilter('todos')}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap shadow-sm flex items-center gap-1.5 transition-all ${
-              activeFilter === 'todos'
-                ? 'bg-[#006b21] text-white'
-                : 'bg-white/95 backdrop-blur text-[#3e4a3c] border border-[#e2e8f0] hover:bg-[#f1f4f6]'
-            }`}
-          >
-            Todos
-          </button>
-
-          <button
-            id="filter-residuos-comunes"
-            onClick={() => setActiveFilter('residuos-comunes')}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap shadow-sm flex items-center gap-1.5 transition-all ${
-              activeFilter === 'residuos-comunes'
-                ? 'bg-[#006b21] text-white'
-                : 'bg-white/95 backdrop-blur text-[#3e4a3c] border border-[#e2e8f0] hover:bg-[#f1f4f6]'
-            }`}
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Residuos Comunes
-          </button>
-
-          <button
-            id="filter-reciclables"
-            onClick={() => setActiveFilter('reciclables')}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap shadow-sm flex items-center gap-1.5 transition-all ${
-              activeFilter === 'reciclables'
-                ? 'bg-[#006b21] text-white'
-                : 'bg-white/95 backdrop-blur text-[#3e4a3c] border border-[#e2e8f0] hover:bg-[#f1f4f6]'
-            }`}
-          >
-            <Recycle className="w-3.5 h-3.5" />
-            Reciclables
-          </button>
-
-          <button
-            id="filter-poda"
-            onClick={() => setActiveFilter('poda-escombros')}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap shadow-sm flex items-center gap-1.5 transition-all ${
-              activeFilter === 'poda-escombros'
-                ? 'bg-[#006b21] text-white'
-                : 'bg-white/95 backdrop-blur text-[#3e4a3c] border border-[#e2e8f0] hover:bg-[#f1f4f6]'
-            }`}
-          >
-            <Trees className="w-3.5 h-3.5" />
-            Poda y Escombros
-          </button>
-        </div>
-      </div>
-
-      {/* Main Interactive Leaflet Map Container */}
-      <div
-        id="leaflet-map-container"
-        ref={mapContainerRef}
-        className="w-full h-full z-0 cursor-grab active:cursor-grabbing outline-none"
-      />
-
-      {/* Map Layer Switcher & Quick Navigation Control (Top Right) */}
-      <div className="absolute top-28 right-3.5 z-20 flex flex-col gap-2 pointer-events-auto">
-        {/* Layer Mode Toggle */}
-        <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-lg border border-[#e2e8f0] p-1 flex flex-col gap-1">
-          <button
-            onClick={() => setMapLayerType('streets')}
-            title="Mapa de Calles"
-            className={`p-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
-              mapLayerType === 'streets'
-                ? 'bg-[#006b21] text-white shadow-sm'
-                : 'text-[#555f71] hover:bg-[#f1f4f6]'
-            }`}
-          >
-            <Layers className="w-4 h-4" />
-            <span className="hidden sm:inline">Calles</span>
-          </button>
-
-          <button
-            onClick={() => setMapLayerType('satellite')}
-            title="Vista Satelital"
-            className={`p-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all ${
-              mapLayerType === 'satellite'
-                ? 'bg-[#006b21] text-white shadow-sm'
-                : 'text-[#555f71] hover:bg-[#f1f4f6]'
-            }`}
-          >
-            <Sparkles className="w-4 h-4" />
-            <span className="hidden sm:inline">Satélite</span>
-          </button>
-        </div>
-
-        {/* Zoom Controls */}
-        <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-lg border border-[#e2e8f0] flex flex-col overflow-hidden">
-          <button
-            onClick={handleZoomIn}
-            aria-label="Acercar mapa"
-            className="w-9 h-9 flex items-center justify-center text-[#181c1e] hover:bg-[#f1f4f6] active:bg-[#e2e8f0] transition-colors border-b border-[#e2e8f0]"
-          >
-            <ZoomIn className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleZoomOut}
-            aria-label="Alejar mapa"
-            className="w-9 h-9 flex items-center justify-center text-[#181c1e] hover:bg-[#f1f4f6] active:bg-[#e2e8f0] transition-colors border-b border-[#e2e8f0]"
-          >
-            <ZoomOut className="w-4 h-4" />
-          </button>
-          <button
-            onClick={handleResetCenter}
-            title="Centrar en Corrientes"
-            className="w-9 h-9 flex items-center justify-center text-[#006b21] hover:bg-[#f1f4f6] active:bg-[#e2e8f0] transition-colors"
-          >
-            <Crosshair className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
-
-      {/* Floating Action Controls on Bottom Right */}
-      {/* If sheet is open, they float above the sheet; if sheet is closed, they rest cleanly at the bottom */}
-      <div
-        className={`absolute right-3.5 z-20 flex flex-col gap-2 pointer-events-auto transition-all duration-300 ${
-          isSheetOpen ? 'bottom-[275px] sm:bottom-[285px]' : 'bottom-20'
-        }`}
-      >
-        {/* GPS My Location */}
-        <button
-          id="btn-my-location"
-          onClick={handleLocateUser}
-          aria-label="Mi Ubicación"
-          className="w-11 h-11 bg-white/95 backdrop-blur-md rounded-2xl shadow-lg flex items-center justify-center border border-[#e2e8f0] text-[#006b21] hover:bg-[#f1f4f6] transition-transform active:scale-95 group relative"
-        >
-          <Navigation className="w-4 h-4 rotate-45" />
-          <div className="absolute right-full mr-2.5 top-1/2 -translate-y-1/2 bg-[#181c1e] text-white px-2 py-1 rounded text-[10px] font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow">
-            Mi Ubicación
-          </div>
-        </button>
-
-        {/* Live Truck Tracking Toggle */}
-        <button
-          id="btn-live-truck-toggle"
-          onClick={() => setShowLiveTruck(!showLiveTruck)}
-          aria-label="Rastreo de camión en vivo"
-          className={`w-11 h-11 rounded-2xl shadow-xl flex items-center justify-center text-white transition-all active:scale-95 relative group ${
-            showLiveTruck ? 'bg-[#006b21] hover:bg-[#00872c]' : 'bg-[#555f71] hover:bg-[#3e4a3c]'
-          }`}
-        >
-          <Truck className="w-4 h-4" />
-          <div className="absolute -top-1 -right-1 bg-[#DC2626] text-white text-[8px] font-bold px-1 py-0.2 rounded-full shadow whitespace-nowrap">
-            {showLiveTruck ? 'GPS' : 'OFF'}
-          </div>
-          <div className="absolute right-full mr-2.5 top-1/2 -translate-y-1/2 bg-[#181c1e] text-white px-2 py-1 rounded text-[10px] font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow">
-            {showLiveTruck ? 'Pausar camión' : 'Ver camión recolector'}
-          </div>
-        </button>
-      </div>
-
-      {/* Floating Bottom Bar when no card is open: allows exploring streets freely without obstruction */}
-      {!isSheetOpen && (
-        <div className="absolute bottom-20 inset-x-4 max-w-sm mx-auto z-20 pointer-events-auto flex items-center justify-center animate-fadeIn">
-          <button
-            onClick={() => {
-              if (currentActiveZone) {
-                setIsSheetOpen(true);
-              }
-            }}
-            className="bg-white/95 backdrop-blur-md shadow-lg border border-[#e2e8f0] px-4 py-2 rounded-full flex items-center gap-2 text-xs font-bold text-[#181c1e] hover:bg-white active:scale-98 transition-all"
-          >
-            <span className="w-2 h-2 rounded-full bg-[#006b21] animate-pulse"></span>
-            <span>Toca un punto o busca una calle para ver horarios</span>
-            <ChevronUp className="w-4 h-4 text-[#555f71]" />
-          </button>
-        </div>
-      )}
-
-      {/* Bottom Sheet Card: Only rendered when a point is clicked or opened */}
-      {isSheetOpen && currentActiveZone && (
-        <div className="absolute bottom-2 inset-x-4 max-w-md mx-auto z-30 pb-16 pointer-events-auto animate-slideUp">
-          {currentActiveZone.id === 'junin-1200' ? (
-            /* SCREENSHOT 1: Calle Junín 1200 Card */
-            <div
-              id="sheet-junin-card"
-              className="bg-white rounded-3xl shadow-2xl border border-[#e2e8f0] p-4 sm:p-5 flex flex-col gap-3.5 transition-all relative"
+          {modalFilterCount > 0 && (
+            <button
+              id="map-active-filters-chip"
+              onClick={onClearFilters}
+              className="h-9 px-3 rounded-full text-sm font-semibold whitespace-nowrap shadow-elev-1 flex items-center gap-1.5 bg-brand-soft text-brand-700 border border-brand-500"
             >
-              {/* Close Button on top-right */}
-              <button
-                onClick={() => setIsSheetOpen(false)}
-                title="Cerrar y ver mapa completo"
-                className="absolute top-3.5 right-3.5 w-7 h-7 rounded-full bg-[#f1f4f6] hover:bg-[#e2e8f0] text-[#555f71] flex items-center justify-center transition-colors z-10"
-              >
-                <X className="w-4 h-4" />
-              </button>
-
-              {/* Drag Indicator to dismiss */}
-              <div
-                onClick={() => setIsSheetOpen(false)}
-                className="w-10 h-1 bg-[#e0e3e5] rounded-full mx-auto -mt-1 cursor-pointer hover:bg-[#bdcab8]"
-                title="Cerrar panel"
-              ></div>
-
-              {/* Status Header with "FALTAN 2h 45m" Badge */}
-              <div className="flex items-start justify-between pr-8">
-                <div className="flex flex-col">
-                  <div className="flex items-center gap-1.5">
-                    <span className="px-2 py-0.5 bg-[#f1f4f6] text-[#006b21] font-bold text-[11px] rounded tracking-wide">
-                      {currentActiveZone.status}
-                    </span>
-                    <span className="text-xs text-[#555f71] font-medium">
-                      • {currentActiveZone.type}
-                    </span>
-                  </div>
-                  <h2 className="text-xl font-bold text-[#181c1e] mt-1 font-['Public_Sans',sans-serif]">
-                    {currentActiveZone.name}
-                  </h2>
-                  <p className="text-xs text-[#555f71]">{currentActiveZone.subtitle}</p>
-                </div>
-
-                {/* Green Remaining Time Box */}
-                <div className="bg-[#006b21] text-white px-2.5 py-1.5 rounded-2xl shadow flex flex-col items-center justify-center leading-none min-w-[64px]">
-                  <span className="text-[9px] tracking-wider font-extrabold opacity-80 mb-0.5">
-                    FALTAN
-                  </span>
-                  <span className="text-base font-black">2h</span>
-                  <span className="text-xs font-bold">45m</span>
-                </div>
-              </div>
-
-              {/* Frequency & Time Window Grid */}
-              <div className="grid grid-cols-2 gap-2.5">
-                <div className="bg-[#f7fafc] border border-[#e2e8f0] rounded-2xl p-3 flex flex-col justify-center">
-                  <div className="flex items-center gap-1.5 text-[#006b21] mb-1">
-                    <Calendar className="w-4 h-4" />
-                    <span className="text-[11px] text-[#555f71] font-semibold">Frecuencia</span>
-                  </div>
-                  <span className="text-sm font-bold text-[#181c1e]">
-                    {currentActiveZone.frequency}
-                  </span>
-                </div>
-
-                <div className="bg-[#f7fafc] border border-[#e2e8f0] rounded-2xl p-3 flex flex-col justify-center">
-                  <div className="flex items-center gap-1.5 text-[#006b21] mb-1">
-                    <Clock className="w-4 h-4" />
-                    <span className="text-[11px] text-[#555f71] font-semibold">Ventana</span>
-                  </div>
-                  <span className="text-sm font-bold text-[#181c1e]">
-                    {currentActiveZone.timeWindow}
-                  </span>
-                </div>
-              </div>
-
-              {/* Action Buttons: Avisarme + Share */}
-              <div className="flex items-center gap-2 pt-1">
-                <button
-                  id="btn-avisarme-junin"
-                  onClick={() => onToggleReminder(currentActiveZone)}
-                  className={`flex-1 h-12 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-sm active:scale-98 ${
-                    isReminderActive
-                      ? 'bg-[#059669] text-white ring-2 ring-[#81fc89]'
-                      : 'bg-[#006b21] text-white hover:bg-[#00872c]'
-                  }`}
-                >
-                  {isReminderActive ? (
-                    <>
-                      <CheckCircle2 className="w-4 h-4" />
-                      Recordatorio Activado
-                    </>
-                  ) : (
-                    <>
-                      <Bell className="w-4 h-4" />
-                      Avisarme
-                    </>
-                  )}
-                </button>
-
-                <button
-                  id="btn-share-junin"
-                  onClick={() => onShare(currentActiveZone)}
-                  aria-label="Compartir información de zona"
-                  className="w-12 h-12 bg-[#f1f4f6] hover:bg-[#e5e9eb] rounded-2xl flex items-center justify-center text-[#181c1e] transition-colors shrink-0"
-                >
-                  <Share2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          ) : (
-            /* SCREENSHOT 2: Zona Centro / Punto Verde Card */
-            <div
-              id="sheet-zonacentro-card"
-              className="bg-white rounded-3xl shadow-2xl border border-[#e2e8f0] p-4 sm:p-5 flex flex-col gap-3.5 transition-all relative"
-            >
-              {/* Close Button on top-right */}
-              <button
-                onClick={() => setIsSheetOpen(false)}
-                title="Cerrar y ver mapa completo"
-                className="absolute top-3.5 right-3.5 w-7 h-7 rounded-full bg-[#f1f4f6] hover:bg-[#e2e8f0] text-[#555f71] flex items-center justify-center transition-colors z-10"
-              >
-                <X className="w-4 h-4" />
-              </button>
-
-              {/* Drag Indicator */}
-              <div
-                onClick={() => setIsSheetOpen(false)}
-                className="w-10 h-1 bg-[#e0e3e5] rounded-full mx-auto -mt-1 cursor-pointer hover:bg-[#bdcab8]"
-                title="Cerrar panel"
-              ></div>
-
-              {/* Header with Category Icon */}
-              <div className="flex items-start justify-between pr-8">
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="px-2 py-0.5 bg-[#f1f4f6] text-[#006b21] font-bold text-[10px] rounded tracking-wide">
-                      {currentActiveZone.status}
-                    </span>
-                    <span className="text-xs text-[#555f71] font-medium">
-                      • {currentActiveZone.type}
-                    </span>
-                  </div>
-                  <h2 className="text-xl font-bold text-[#181c1e] font-['Public_Sans',sans-serif] mt-1">
-                    {currentActiveZone.name}
-                  </h2>
-                  <p className="text-xs text-[#555f71] mt-0.5">{currentActiveZone.subtitle}</p>
-                </div>
-
-                <div className="w-10 h-10 bg-[#f1f4f6] rounded-2xl flex items-center justify-center text-[#006b21] shrink-0">
-                  {currentActiveZone.category === 'reciclables' || currentActiveZone.category === 'puntos-verdes' ? (
-                    <Recycle className="w-5 h-5" />
-                  ) : currentActiveZone.category === 'poda-escombros' ? (
-                    <Trees className="w-5 h-5" />
-                  ) : (
-                    <Trash2 className="w-5 h-5" />
-                  )}
-                </div>
-              </div>
-
-              {/* Details Box with Dividers */}
-              <div className="bg-[#f7fafc] border border-[#e2e8f0] rounded-2xl p-3.5 flex flex-col gap-2.5">
-                <div className="flex items-center gap-3">
-                  <Calendar className="w-4 h-4 text-[#006b21] shrink-0" />
-                  <div className="flex flex-col">
-                    <span className="text-[10px] text-[#555f71] font-semibold uppercase">Días</span>
-                    <span className="text-xs font-semibold text-[#181c1e]">
-                      {currentActiveZone.frequency}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="h-px w-full bg-[#e2e8f0]" />
-
-                <div className="flex items-center gap-3">
-                  <Clock className="w-4 h-4 text-[#006b21] shrink-0" />
-                  <div className="flex flex-col">
-                    <span className="text-[10px] text-[#555f71] font-semibold uppercase">Horario</span>
-                    <span className="text-xs font-semibold text-[#181c1e]">
-                      {currentActiveZone.timeWindow}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action: Ver Detalles de Ruta + Share */}
-              <div className="flex items-center gap-2">
-                <button
-                  id="btn-ver-detalles-ruta"
-                  onClick={() => onOpenRouteDetails(currentActiveZone)}
-                  className="flex-1 h-12 bg-[#ebeef0] hover:bg-[#e0e3e5] text-[#006b21] font-bold text-sm rounded-2xl transition-all flex items-center justify-center gap-2 active:scale-98"
-                >
-                  <Info className="w-4 h-4" />
-                  Ver Detalles de Ruta
-                </button>
-
-                <button
-                  id="btn-share-zonacentro"
-                  onClick={() => onShare(currentActiveZone)}
-                  aria-label="Compartir"
-                  className="w-12 h-12 bg-[#f1f4f6] hover:bg-[#e5e9eb] rounded-2xl flex items-center justify-center text-[#181c1e] transition-colors shrink-0"
-                >
-                  <Share2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
+              {activeFilterCount} {activeFilterCount === 1 ? 'filtro' : 'filtros'} · Limpiar
+              <X className="w-4 h-4" />
+            </button>
           )}
+          {CATEGORY_PILLS.map(({ id, category }) => {
+            const { label, Icon } = categoryMeta[category];
+            const isActive = activeCategory === category;
+            return (
+              <button
+                key={id}
+                id={id}
+                onClick={() => onSelectCategory(category)}
+                aria-pressed={isActive}
+                className={`h-9 px-3.5 rounded-full text-sm font-semibold whitespace-nowrap shadow-elev-1 flex items-center gap-1.5 transition-colors ${
+                  isActive
+                    ? 'bg-brand-600 text-white'
+                    : 'bg-surface-card text-ink-body border border-line hover:bg-surface-muted'
+                }`}
+              >
+                {category !== 'todos' && <Icon className="w-4 h-4" />}
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Capas y zoom (arriba a la derecha). Con la hoja abierta se ocultan para no chocar con GPS y camión. */}
+      {!showSheet && (
+        <div className="absolute top-[7.5rem] right-4 z-10 flex flex-col gap-2">
+          <div className="bg-surface-card rounded-card shadow-elev-2 border border-line p-1 flex flex-col gap-1">
+            <button
+              onClick={() => setMapLayerType('streets')}
+              aria-label="Mapa de calles"
+              aria-pressed={mapLayerType === 'streets'}
+              title="Mapa de calles"
+              className={`w-11 h-11 rounded-control flex items-center justify-center transition-colors ${
+                mapLayerType === 'streets' ? 'bg-brand-600 text-white' : 'text-ink-muted hover:bg-surface-muted'
+              }`}
+            >
+              <MapIcon className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => setMapLayerType('satellite')}
+              aria-label="Vista satelital"
+              aria-pressed={mapLayerType === 'satellite'}
+              title="Vista satelital"
+              className={`w-11 h-11 rounded-control flex items-center justify-center transition-colors ${
+                mapLayerType === 'satellite' ? 'bg-brand-600 text-white' : 'text-ink-muted hover:bg-surface-muted'
+              }`}
+            >
+              <Satellite className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="bg-surface-card rounded-card shadow-elev-2 border border-line flex flex-col overflow-hidden">
+            <button
+              onClick={handleZoomIn}
+              aria-label="Acercar mapa"
+              className="w-11 h-11 flex items-center justify-center text-ink hover:bg-surface-muted active:bg-line transition-colors border-b border-line"
+            >
+              <ZoomIn className="w-5 h-5" />
+            </button>
+            <button
+              onClick={handleZoomOut}
+              aria-label="Alejar mapa"
+              className="w-11 h-11 flex items-center justify-center text-ink hover:bg-surface-muted active:bg-line transition-colors border-b border-line"
+            >
+              <ZoomOut className="w-5 h-5" />
+            </button>
+            <button
+              onClick={handleResetCenter}
+              aria-label="Centrar en Corrientes"
+              title="Centrar en Corrientes"
+              className="w-11 h-11 flex items-center justify-center text-brand-600 hover:bg-surface-muted active:bg-line transition-colors"
+            >
+              <Crosshair className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       )}
+
+      {/* Botones flotantes + hoja en el mismo contenedor: los botones siempre quedan arriba de la hoja. */}
+      <div
+        ref={bottomStackRef}
+        className="absolute inset-x-4 bottom-6 z-20 max-w-md mx-auto flex flex-col gap-3 pointer-events-none"
+      >
+        <div className="self-end flex flex-col gap-2 pointer-events-auto">
+          <button
+            id="btn-my-location"
+            onClick={handleLocateUser}
+            aria-label="Mi ubicación"
+            title="Mi ubicación"
+            className={`${floatingButton} bg-surface-card text-brand-600 hover:bg-surface-muted`}
+          >
+            <Navigation className="w-5 h-5" />
+          </button>
+
+          <button
+            id="btn-live-truck-toggle"
+            onClick={() => setShowLiveTruck(!showLiveTruck)}
+            disabled={!showRoute}
+            aria-label="Camión en vivo"
+            aria-pressed={showLiveTruck}
+            title={!showRoute ? 'Sin recorridos en el filtro actual' : showLiveTruck ? 'Ocultar camión' : 'Ver camión en vivo'}
+            className={`${floatingButton} disabled:opacity-50 disabled:cursor-not-allowed ${
+              showLiveTruck && showRoute
+                ? 'bg-brand-600 text-white border-brand-600 hover:bg-brand-700'
+                : 'bg-surface-card text-ink-muted hover:bg-surface-muted'
+            }`}
+          >
+            <Truck className="w-5 h-5" />
+          </button>
+        </div>
+
+        <AnimatePresence>
+          {showSheet && selectedZone && (
+            <m.div
+              key="sheet"
+              ref={sheetRef}
+              className="pointer-events-auto"
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0, transition: { duration: 0.25, ease: 'easeOut' } }}
+              exit={{ opacity: 0, y: 24, transition: { duration: 0.15, ease: 'easeIn' } }}
+            >
+              <MapZoneSheet
+                zone={selectedZone}
+                isReminderActive={isReminderActive}
+                onClose={() => setIsSheetOpen(false)}
+                onToggleReminder={onToggleReminder}
+                onOpenRouteDetails={onOpenRouteDetails}
+                onShare={onShare}
+              />
+            </m.div>
+          )}
+        </AnimatePresence>
+
+        {showSheet ? null : zones.length === 0 ? (
+          <button
+            id="map-empty-clear-filters"
+            onClick={onClearFilters}
+            className="self-center pointer-events-auto h-11 px-4 rounded-full bg-surface-card shadow-elev-2 border border-line text-sm font-semibold text-ink hover:bg-surface-muted transition-colors"
+          >
+            Sin resultados · Limpiar filtros
+          </button>
+        ) : (
+          showHint && (
+            <p
+              id="map-hint"
+              className="self-center px-4 py-2 rounded-full bg-surface-card/95 shadow-elev-2 border border-line text-sm font-semibold text-ink animate-fadeIn"
+            >
+              Tocá un punto para ver horarios
+            </p>
+          )
+        )}
+      </div>
     </div>
   );
 };

@@ -1,24 +1,23 @@
 import React from 'react';
-import {
-  X,
-  Truck,
-  User,
-  Clock,
-  Calendar,
-  CheckCircle2,
-  AlertCircle,
-  DownloadCloud,
-  Navigation,
-  ShieldCheck,
-  MapPin
-} from 'lucide-react';
+import { X, Truck, Check, Download, Lightbulb, MapPin } from 'lucide-react';
 import { ZoneLocation } from '../types';
+import { Modal } from './Modal';
+import { nextService } from '../data/schedule';
 
 interface RouteDetailsModalProps {
   zone: ZoneLocation | null;
   onClose: () => void;
   onExportSchedule: (zone: ZoneLocation) => void;
 }
+
+const TIPS: Record<ZoneLocation['type'], string> = {
+  'Residuos Comunes':
+    'Sacá las bolsas como mucho 15 minutos antes del horario. Así evitás que los animales las rompan y que tapen los desagües si llueve.',
+  Reciclables: 'Sacá los reciclables limpios, secos y separados de los residuos comunes.',
+  'Poda y Escombros':
+    'Sacá las ramas atadas o embolsadas el día del retiro, sin tapar la vereda ni los desagües.',
+  'Punto Verde': 'Llevá los materiales limpios, secos y separados por tipo.',
+};
 
 export const RouteDetailsModal: React.FC<RouteDetailsModalProps> = ({
   zone,
@@ -27,152 +26,162 @@ export const RouteDetailsModal: React.FC<RouteDetailsModalProps> = ({
 }) => {
   if (!zone) return null;
 
+  const service = nextService(zone);
+  const stops = zone.stops ?? [];
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-      <div
-        id="modal-route-details"
-        className="bg-white w-full max-w-lg rounded-3xl shadow-2xl border border-[#e2e8f0] overflow-hidden flex flex-col max-h-[90vh]"
-      >
-        {/* Modal Header */}
-        <div className="p-5 border-b border-[#e2e8f0] flex items-center justify-between bg-[#f7fafc]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-xl bg-[#006b21] text-white flex items-center justify-center shadow-sm">
-              <Truck className="w-5 h-5" />
-            </div>
-            <div>
-              <span className="text-[10px] font-bold text-[#006b21] uppercase tracking-wider">
-                Detalles Oficiales de Ruta
-              </span>
-              <h2 className="text-lg font-black text-[#181c1e] font-['Public_Sans',sans-serif]">
+    <Modal
+      id="modal-route-details"
+      labelledBy="modal-route-details-title"
+      onClose={onClose}
+      className="max-w-lg max-h-[90dvh]"
+    >
+      {(close) => (
+        <>
+          <div className="p-5 border-b border-line flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <span className="text-xs font-semibold text-brand-600">Detalle de ruta</span>
+              <h2 id="modal-route-details-title" className="font-display text-xl font-bold text-ink">
                 {zone.name}
               </h2>
+              <p className="flex items-center gap-1 text-sm text-ink-muted mt-0.5">
+                <MapPin className="w-4 h-4 text-brand-600 shrink-0" aria-hidden="true" />
+                {zone.address === zone.name ? zone.neighborhood : `${zone.address} · ${zone.neighborhood}`}
+              </p>
             </div>
+
+            <button
+              onClick={close}
+              aria-label="Cerrar"
+              className="w-11 h-11 -mr-2 -mt-2 shrink-0 rounded-full hover:bg-surface-muted flex items-center justify-center text-ink-muted transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
 
-          <button
-            onClick={onClose}
-            className="w-9 h-9 rounded-full bg-white hover:bg-[#ebeef0] border border-[#e2e8f0] flex items-center justify-center text-[#555f71] transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Modal Scrollable Body */}
-        <div className="p-5 overflow-y-auto flex flex-col gap-4">
-          {/* General Information Grid */}
-          <div className="grid grid-cols-2 gap-2.5">
-            <div className="bg-[#f7fafc] p-3 rounded-xl border border-[#e2e8f0] flex flex-col">
-              <span className="text-[10px] font-bold text-[#555f71] uppercase">Turno / Horario</span>
-              <span className="text-xs font-bold text-[#181c1e] mt-0.5">{zone.shift} ({zone.timeWindow})</span>
-            </div>
-            <div className="bg-[#f7fafc] p-3 rounded-xl border border-[#e2e8f0] flex flex-col">
-              <span className="text-[10px] font-bold text-[#555f71] uppercase">Frecuencia</span>
-              <span className="text-xs font-bold text-[#181c1e] mt-0.5">{zone.frequency}</span>
-            </div>
-          </div>
-
-          {/* Truck Unit & Crew details */}
-          <div className="bg-[#006b21]/5 border border-[#006b21]/20 rounded-2xl p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-white border border-[#006b21]/30 text-[#006b21] flex items-center justify-center">
-                <Truck className="w-5 h-5" />
+          <div className="p-5 overflow-y-auto flex flex-col gap-4">
+            <dl className="grid grid-cols-2 gap-2 bg-surface rounded-control p-3 text-sm">
+              <div>
+                <dt className="text-xs font-medium text-ink-muted">Días</dt>
+                <dd className="font-semibold text-ink">{zone.frequency}</dd>
               </div>
-              <div className="flex flex-col">
-                <span className="text-xs font-bold text-[#181c1e]">{zone.truckNumber || 'Camión Asignado #MUNI-18'}</span>
-                <span className="text-[11px] text-[#555f71]">Chofer: {zone.truckDriver || 'Marcos Benítez'}</span>
+              <div>
+                <dt className="text-xs font-medium text-ink-muted">Horario · {zone.shift}</dt>
+                <dd className="font-semibold text-ink tabular-nums">{zone.timeWindow}</dd>
               </div>
-            </div>
-            <span className="px-2.5 py-1 bg-white text-[#006b21] font-bold text-[10px] rounded-lg border border-[#006b21]/20">
-              Operativo
-            </span>
-          </div>
+              <div className="col-span-2">
+                <dt className="text-xs font-medium text-ink-muted">Próximo servicio</dt>
+                <dd className="font-semibold text-ink tabular-nums">{service.label}</dd>
+              </div>
+            </dl>
 
-          {/* Description */}
-          <div className="text-xs text-[#3e4a3c] bg-[#f7fafc] p-3.5 rounded-xl border border-[#e2e8f0] leading-relaxed">
-            {zone.description}
-          </div>
+            {zone.truckNumber && (
+              <div className="bg-brand-soft rounded-card p-4 flex items-center gap-3">
+                <div className="w-10 h-10 shrink-0 rounded-control bg-surface-card text-brand-600 flex items-center justify-center">
+                  <Truck className="w-5 h-5" aria-hidden="true" />
+                </div>
+                <div className="flex-1 min-w-0 flex flex-col">
+                  <span className="text-sm font-semibold text-ink">{zone.truckNumber}</span>
+                  {zone.truckDriver && <span className="text-sm text-ink-muted">{zone.truckDriver}</span>}
+                </div>
+                {service.state === 'en-curso' && (
+                  <span className="shrink-0 px-2.5 py-1 bg-brand-600 text-white font-semibold text-xs rounded-full">
+                    Operativo
+                  </span>
+                )}
+              </div>
+            )}
 
-          {/* Route Stops Timeline */}
-          {zone.stops && zone.stops.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <h3 className="text-xs font-bold text-[#181c1e] uppercase tracking-wider flex items-center gap-1.5">
-                <Navigation className="w-3.5 h-3.5 text-[#006b21]" />
-                Itinerario de Paradas y Recorrido
-              </h3>
+            <p className="text-sm text-ink-body leading-relaxed">{zone.description}</p>
 
-              <div className="flex flex-col gap-2 bg-[#f7fafc] p-3 rounded-2xl border border-[#e2e8f0]">
-                {zone.stops.map((stop, index) => (
-                  <div
-                    key={stop.id}
-                    className="flex items-start gap-3 relative pb-2 last:pb-0"
-                  >
-                    {/* Circle icon */}
-                    <div className="pt-0.5">
-                      {stop.done ? (
-                        <div className="w-5 h-5 rounded-full bg-[#059669] text-white flex items-center justify-center">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                        </div>
-                      ) : stop.isCurrent ? (
-                        <div className="w-5 h-5 rounded-full bg-[#006b21] text-white flex items-center justify-center animate-pulse ring-4 ring-[#81fc89]/50">
-                          <span className="w-2 h-2 bg-white rounded-full"></span>
-                        </div>
-                      ) : (
-                        <div className="w-5 h-5 rounded-full bg-white border-2 border-[#bdcab8] flex items-center justify-center text-[9px] font-bold text-[#555f71]">
-                          {index + 1}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex-1 flex items-center justify-between text-xs">
-                      <div>
-                        <span className={`font-semibold ${stop.isCurrent ? 'text-[#006b21] font-bold' : 'text-[#181c1e]'}`}>
-                          {stop.name}
-                        </span>
-                        {stop.isCurrent && (
-                          <span className="ml-2 px-1.5 py-0.5 bg-[#006b21] text-white text-[9px] font-bold rounded">
-                            En curso ahora
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[11px] font-mono text-[#555f71] shrink-0 ml-2">
-                        {stop.time} hs
-                      </span>
-                    </div>
-                  </div>
+            {zone.materialsAccepted && zone.materialsAccepted.length > 0 && (
+              <ul className="flex flex-wrap gap-1.5" aria-label="Materiales que recibe">
+                {zone.materialsAccepted.map((mat) => (
+                  <li key={mat} className="px-2.5 py-1 bg-brand-soft text-brand-700 rounded-full text-xs font-medium">
+                    {mat}
+                  </li>
                 ))}
-              </div>
-            </div>
-          )}
+              </ul>
+            )}
 
-          {/* Citizen Rules Reminder */}
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2.5 text-xs text-amber-900">
-            <AlertCircle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
-            <div className="flex flex-col">
-              <span className="font-bold">Recomendación para vecinos:</span>
-              <span className="text-[11px] text-amber-800 mt-0.5">
-                Sacar las bolsas hasta 15 minutos antes de la hora indicada para evitar roturas por animales y anegamientos en días de lluvia.
-              </span>
+            {stops.length > 0 && (
+              <section aria-labelledby="route-stops-title" className="flex flex-col gap-3">
+                <h3 id="route-stops-title" className="font-display text-base font-bold text-ink">
+                  Recorrido
+                </h3>
+
+                <ol className="flex flex-col">
+                  {stops.map((stop, index) => (
+                    <li
+                      key={stop.id}
+                      aria-current={stop.isCurrent ? 'step' : undefined}
+                      className="relative flex items-start gap-3 pb-4 last:pb-0"
+                    >
+                      {/* Línea conectora hasta la parada siguiente */}
+                      {index < stops.length - 1 && (
+                        <span
+                          className={`absolute left-[11px] top-6 bottom-0 w-0.5 ${stop.done ? 'bg-brand-500' : 'bg-line-strong'}`}
+                          aria-hidden="true"
+                        />
+                      )}
+
+                      {stop.done ? (
+                        <span className="relative w-6 h-6 shrink-0 rounded-full bg-brand-500 text-white flex items-center justify-center">
+                          <Check className="w-3.5 h-3.5" strokeWidth={3} aria-hidden="true" />
+                          <span className="sr-only">Completada:</span>
+                        </span>
+                      ) : stop.isCurrent ? (
+                        <span className="relative w-6 h-6 shrink-0 rounded-full bg-surface-card border-2 border-brand-600 ring-4 ring-brand-500/20 flex items-center justify-center">
+                          <span className="w-2.5 h-2.5 rounded-full bg-brand-600" />
+                        </span>
+                      ) : (
+                        <span className="relative w-6 h-6 shrink-0 rounded-full bg-surface-card border-2 border-line-strong flex items-center justify-center text-xs font-semibold text-ink-muted">
+                          {index + 1}
+                        </span>
+                      )}
+
+                      <div className="flex-1 min-w-0 flex items-start justify-between gap-2 text-sm pt-0.5">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className={stop.isCurrent ? 'font-semibold text-ink' : stop.done ? 'text-ink-muted' : 'text-ink-body'}>
+                            {stop.name}
+                          </span>
+                          {stop.isCurrent && (
+                            <span className="px-2 py-0.5 bg-brand-soft text-brand-700 text-xs font-semibold rounded-full">
+                              Parada actual
+                            </span>
+                          )}
+                        </div>
+                        <span className="shrink-0 text-ink-muted tabular-nums">{stop.time}</span>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </section>
+            )}
+
+            <div className="bg-warning/10 rounded-control p-3 flex items-start gap-2.5 text-sm text-ink-body">
+              <Lightbulb className="w-5 h-5 text-warning shrink-0" aria-hidden="true" />
+              <p>{TIPS[zone.type]}</p>
             </div>
           </div>
-        </div>
 
-        {/* Modal Footer */}
-        <div className="p-4 border-t border-[#e2e8f0] bg-[#f7fafc] flex items-center gap-2">
-          <button
-            onClick={() => onExportSchedule(zone)}
-            className="flex-1 h-12 bg-[#006b21] hover:bg-[#00872c] text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-md transition-all active:scale-98"
-          >
-            <DownloadCloud className="w-4 h-4" />
-            Exportar a Google Drive
-          </button>
-          <button
-            onClick={onClose}
-            className="h-12 px-5 bg-white hover:bg-[#ebeef0] border border-[#e2e8f0] text-[#181c1e] font-bold text-xs rounded-xl transition-colors"
-          >
-            Cerrar
-          </button>
-        </div>
-      </div>
-    </div>
+          <div className="p-4 border-t border-line flex items-center gap-2">
+            <button
+              onClick={() => onExportSchedule(zone)}
+              className="flex-1 h-12 bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm rounded-control flex items-center justify-center gap-2 transition-colors"
+            >
+              <Download className="w-4 h-4" aria-hidden="true" />
+              Descargar horario
+            </button>
+            <button
+              onClick={close}
+              className="h-12 px-5 bg-surface-muted hover:bg-brand-soft text-ink font-semibold text-sm rounded-control transition-colors"
+            >
+              Cerrar
+            </button>
+          </div>
+        </>
+      )}
+    </Modal>
   );
 };
